@@ -15,7 +15,7 @@
         }
         canvas { display: block; }
         
-        /* UI Elements - Copied from All-Controls */
+        /* UI Elements */
         .glass-panel { background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); }
         .control-btn { background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.6); backdrop-filter: blur(4px); border-radius: 50%; position: relative; pointer-events: auto; }
         .control-btn:active, .control-btn.active { transform: scale(0.92); background: rgba(255, 255, 255, 0.4); }
@@ -33,7 +33,7 @@
     <!-- Game Canvas -->
     <canvas id="gameCanvas"></canvas>
 
-    <!-- Start Screen / Connect Screen -->
+    <!-- Start Screen -->
     <div id="start-screen" class="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
         <div class="bg-white/95 p-8 rounded-3xl shadow-2xl text-center max-w-lg w-full mx-4 border border-white/50 animate-pop">
             <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-400 mb-2">SNOWBRAWL</h1>
@@ -50,7 +50,7 @@
         </div>
     </div>
 
-    <!-- UI Overlay (HUD) -->
+    <!-- UI Overlay -->
     <div id="ui-layer" class="hidden absolute inset-0 pointer-events-none flex flex-col justify-between p-4 overflow-hidden z-40">
         <div class="flex justify-between items-start w-full pointer-events-auto">
             <div class="glass-panel text-blue-600 px-5 py-2 rounded-xl flex flex-col items-center min-w-[80px] transform skew-x-[-10deg]">
@@ -68,7 +68,7 @@
     <div id="controls-layer" class="hidden absolute inset-0 z-30 overflow-hidden pointer-events-none">
         <div id="joystick-zone">
             <div class="w-full h-full rounded-full border-2 border-white/30 bg-gradient-to-br from-white/10 to-transparent relative backdrop-blur-sm shadow-xl">
-                <div id="joystick-knob" class="absolute w-12 h-12 bg-white rounded-full shadow-lg top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border border-slate-200"></div>
+                <div id="joystick-knob" class="absolute w-12 h-12 bg-white rounded-full shadow-lg top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border border-slate-200 pointer-events-none"></div>
             </div>
         </div>
 
@@ -76,11 +76,11 @@
             <div class="flex gap-4 items-end">
                 <!-- Dash -->
                 <div id="btn-dash" class="control-btn w-16 h-16 flex items-center justify-center bg-yellow-400/80 active:bg-yellow-500 shadow-lg">
-                    <svg class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                    <svg class="h-8 w-8 text-white pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
                 </div>
                 <!-- Throw -->
                 <div id="btn-throw" class="control-btn w-24 h-24 flex items-center justify-center bg-gradient-to-br from-red-500 to-red-600 active:from-red-600 shadow-xl">
-                    <svg class="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" /></svg>
+                    <svg class="h-10 w-10 text-white pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" /></svg>
                     <svg class="absolute inset-0 w-full h-full rotate-[-90deg] pointer-events-none" viewBox="0 0 100 100">
                         <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="4" />
                         <circle id="charge-indicator" cx="50" cy="50" r="46" fill="none" stroke="white" stroke-width="4" stroke-dasharray="289" stroke-dashoffset="289" style="transition: stroke-dashoffset 0.1s linear;" />
@@ -89,7 +89,7 @@
             </div>
             <!-- Gather -->
             <div id="btn-gather" class="control-btn w-16 h-16 flex items-center justify-center bg-blue-500/80 mt-2 shadow-lg active:bg-blue-600">
-                <svg class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11" /></svg>
+                <svg class="h-8 w-8 text-white pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11" /></svg>
             </div>
         </div>
     </div>
@@ -119,7 +119,7 @@ const STATE = {
     worldWidth: 2000,
     worldHeight: 2000,
     camera: { x: 0, y: 0 },
-    players: {}, // VisualPlayer instances
+    players: {}, 
     obstacles: [],
     snowballs: [],
     particles: [],
@@ -129,7 +129,7 @@ const STATE = {
 };
 
 /**
- * --- AUDIO ENGINE (From all-controls.html) ---
+ * --- AUDIO ENGINE ---
  */
 const Audio = {
     ctx: null,
@@ -178,19 +178,16 @@ class VisualPlayer {
     constructor(data) {
         this.id = data.id;
         this.team = data.team;
-        // Interpolation props
         this.x = data.x;
         this.y = data.y;
         this.targetX = data.x;
         this.targetY = data.y;
         
-        // Cosmetics from server
         this.skinColor = data.skinColor || '#ffdbac';
         this.hatType = data.hatType || 0;
         this.teamColor = this.team === 'blue' ? '#2196F3' : '#F44336';
         this.teamColorDark = this.team === 'blue' ? '#1976D2' : '#D32F2F';
 
-        // Anim
         this.facingAngle = 0;
         this.walkCycle = 0;
         this.flashTimer = 0;
@@ -208,7 +205,7 @@ class VisualPlayer {
         this.x += (this.targetX - this.x) * 0.25;
         this.y += (this.targetY - this.y) * 0.25;
 
-        // Walk Cycle Calculation
+        // Walk Cycle
         const dx = this.targetX - this.x;
         const dy = this.targetY - this.y;
         const speed = Math.hypot(dx, dy);
@@ -216,7 +213,6 @@ class VisualPlayer {
         if (speed > 1) {
             this.facingAngle = Math.atan2(dy, dx);
             this.walkCycle += 0.2 + (speed * 0.05);
-            // Local Footprints
             if (Math.random() < 0.1) {
                 STATE.footprints.push({x: this.x, y: this.y + 10, life: 200, angle: this.facingAngle});
             }
@@ -260,7 +256,7 @@ class VisualPlayer {
             ctx.fillStyle = this.skinColor;
             ctx.beginPath(); ctx.arc(0, -16, 9, 0, Math.PI*2); ctx.fill();
 
-            // Hat Logic
+            // Hat
             if (this.hatType === 1) { 
                 ctx.fillStyle = this.teamColorDark; ctx.beginPath(); ctx.arc(0, -20, 9, Math.PI, 0); ctx.fill(); ctx.beginPath(); ctx.arc(0, -24, 3, 0, Math.PI*2); ctx.fill();
             } else if (this.hatType === 2) { 
@@ -344,10 +340,8 @@ function addPopup(x, y, text, color) {
  * --- SOCKET & NETWORK ---
  */
 socket.on('connect', () => {
-    // Update UI to show "Ready"
-    const statusDiv = document.getElementById('connection-status');
+    document.getElementById('connection-status').innerHTML = '<p class="text-green-500 font-bold">CONNECTED!</p>';
     const btn = document.getElementById('btn-play');
-    statusDiv.innerHTML = '<p class="text-green-500 font-bold">CONNECTED!</p>';
     btn.disabled = false;
     btn.classList.remove('bg-slate-300', 'opacity-50', 'cursor-not-allowed');
     btn.classList.add('bg-blue-600', 'hover:bg-blue-500', 'cursor-pointer', 'transform', 'hover:scale-105');
@@ -362,29 +356,22 @@ socket.on('init', (data) => {
 });
 
 socket.on('state', (serverData) => {
-    // Sync Players
     for (let id in serverData.players) {
         const pData = serverData.players[id];
-        if (!STATE.players[id]) {
-            STATE.players[id] = new VisualPlayer(pData); // New
-        }
-        STATE.players[id].update(pData); // Update
+        if (!STATE.players[id]) STATE.players[id] = new VisualPlayer(pData);
+        STATE.players[id].update(pData);
     }
-    // Remove disconnected
     for (let id in STATE.players) {
         if (!serverData.players[id]) delete STATE.players[id];
     }
-    
     STATE.snowballs = serverData.snowballs;
 
-    // Update Scores
     const blues = Object.values(serverData.players).filter(p => p.team === 'blue' && !p.isFrozen).length;
     const reds = Object.values(serverData.players).filter(p => p.team === 'red' && !p.isFrozen).length;
     document.getElementById('score-blue').innerText = blues;
     document.getElementById('score-red').innerText = reds;
 });
 
-// Effects triggered by server
 socket.on('effect', (data) => {
     if (data.type === 'dash') {
         createParticles(data.x, data.y, '#FFF', 5);
@@ -438,11 +425,11 @@ function gameLoop() {
             angle: STATE.inputs.angle
         });
         
-        // Reset single-frame triggers
+        // Reset single-frame triggers ONLY
         STATE.inputs.throwStart = false;
         STATE.inputs.throwRelease = false;
         STATE.inputs.dash = false;
-        STATE.inputs.gather = false;
+        // NOTE: We do NOT reset gather here, as it needs to be held down
     }
 
     // --- CAMERA ---
@@ -553,7 +540,6 @@ const handleJoy = (e, isEnd) => {
     if (dist > max) { dx = (dx/dist)*max; dy = (dy/dist)*max; }
     joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
     STATE.inputs.moveX = dx/max; STATE.inputs.moveY = dy/max;
-    // Update Angle based on movement
     if (dist > 5) STATE.inputs.angle = Math.atan2(STATE.inputs.moveY, STATE.inputs.moveX);
 };
 joyZone.addEventListener('touchstart', (e)=>{e.preventDefault(); handleJoy(e, false)});
