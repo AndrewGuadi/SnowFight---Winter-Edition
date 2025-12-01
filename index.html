@@ -3,145 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Snowbrawl: World War</title>
+    <title>Snowbrawl: World War (Online)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
-        :root {
-            --btn-scale: 1; /* Default scale */
-        }
-
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #e3f2fd;
-            touch-action: none;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            user-select: none;
-            -webkit-user-select: none;
+        :root { --btn-scale: 1; }
+        body { 
+            margin: 0; overflow: hidden; background-color: #e3f2fd; 
+            touch-action: none; font-family: 'Segoe UI', Tahoma, sans-serif; 
+            user-select: none; -webkit-user-select: none; 
         }
         canvas { display: block; }
         
-        /* UI Elements */
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        }
-
-        .control-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.6);
-            backdrop-filter: blur(4px);
-            border-radius: 50%;
-            transition: background 0.1s, transform 0.1s;
-            position: relative;
-            overflow: hidden;
-            pointer-events: auto;
-        }
-        .control-btn:active, .control-btn.active {
-            transform: scale(0.92);
-            background: rgba(255, 255, 255, 0.4);
-        }
-
-        /* Utility Buttons (Pause/Recenter) */
-        .util-btn {
-            background: white;
-            color: #475569;
-            border-radius: 50%;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.2s;
-            cursor: pointer;
-            pointer-events: auto;
-            border: 1px solid #e2e8f0;
-        }
-        .util-btn:active { transform: scale(0.9); }
-
-        #joystick-zone {
-            position: absolute;
-            bottom: 30px;
-            left: 30px;
-            width: 140px;
-            height: 140px;
-            z-index: 10;
-            pointer-events: auto;
-            /* Scaling Logic */
-            transform-origin: bottom left;
-            transform: scale(var(--btn-scale));
-        }
-        #action-zone {
-            position: absolute;
-            bottom: 30px;
-            right: 30px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 15px;
-            z-index: 10;
-            /* Scaling Logic */
-            transform-origin: bottom right;
-            transform: scale(var(--btn-scale));
-        }
+        /* UI Elements - Copied from All-Controls */
+        .glass-panel { background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); }
+        .control-btn { background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.6); backdrop-filter: blur(4px); border-radius: 50%; position: relative; pointer-events: auto; }
+        .control-btn:active, .control-btn.active { transform: scale(0.92); background: rgba(255, 255, 255, 0.4); }
         
-        .action-row {
-            display: flex;
-            gap: 20px;
-            align-items: flex-end;
-        }
-
-        .hud-stat { text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-        .hidden { display: none !important; }
-
-        /* Animations */
-        @keyframes popIn {
-            0% { transform: scale(0.5); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
+        #joystick-zone { position: absolute; bottom: 30px; left: 30px; width: 140px; height: 140px; z-index: 10; pointer-events: auto; transform-origin: bottom left; transform: scale(var(--btn-scale)); }
+        #action-zone { position: absolute; bottom: 30px; right: 30px; display: flex; flex-direction: column; align-items: center; gap: 15px; z-index: 10; transform-origin: bottom right; transform: scale(var(--btn-scale)); }
+        
         .animate-pop { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        
-        .mode-card {
-            transition: all 0.3s;
-            border: 2px solid transparent;
-        }
-        .mode-card:hover {
-            transform: translateY(-4px);
-            border-color: rgba(59, 130, 246, 0.5);
-            background: white;
-        }
-        
-        /* Overlays */
-        #pause-menu, #settings-modal {
-            z-index: 60;
-            background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(5px);
-        }
-
-        /* Settings Slider */
-        input[type=range] {
-            -webkit-appearance: none;
-            width: 100%;
-            background: transparent;
-        }
-        input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            height: 20px;
-            width: 20px;
-            border-radius: 50%;
-            background: #3b82f6;
-            margin-top: -8px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        }
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 4px;
-            cursor: pointer;
-            background: #cbd5e1;
-            border-radius: 2px;
-        }
+        @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -149,1508 +33,580 @@
     <!-- Game Canvas -->
     <canvas id="gameCanvas"></canvas>
 
-    <!-- Camera Pan Detection Layer (Behind UI, on top of Canvas) -->
-    <div id="touch-layer" class="absolute inset-0 z-0"></div>
-
-    <!-- UI Overlay -->
-    <div id="ui-layer" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 overflow-hidden z-10">
-        
-        <!-- Top HUD -->
-        <div class="flex flex-col w-full pointer-events-none gap-2">
+    <!-- Start Screen / Connect Screen -->
+    <div id="start-screen" class="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
+        <div class="bg-white/95 p-8 rounded-3xl shadow-2xl text-center max-w-lg w-full mx-4 border border-white/50 animate-pop">
+            <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-400 mb-2">SNOWBRAWL</h1>
+            <p class="text-slate-500 font-bold mb-6 tracking-widest text-xs uppercase">Multiplayer Edition</p>
             
-            <!-- Top Bar: Scores + Pause -->
-            <div class="flex justify-between items-start w-full pointer-events-auto">
-                <!-- Blue Score -->
-                <div class="glass-panel text-blue-600 px-5 py-2 rounded-xl flex flex-col items-center min-w-[80px] transform skew-x-[-10deg]">
-                    <span class="text-[10px] uppercase font-black tracking-widest opacity-70 transform skew-x-[10deg]">Blue</span>
-                    <span id="score-blue" class="text-3xl font-black transform skew-x-[10deg] hud-stat">0</span>
-                </div>
-                
-                <!-- Utilities -->
-                <div class="flex gap-3">
-                     <!-- Recenter Button (Hidden by default) -->
-                    <button id="btn-recenter" onclick="recenterCamera()" class="util-btn w-12 h-12 hidden opacity-0 transition-opacity duration-300 bg-blue-500 text-white border-blue-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                    </button>
-
-                    <!-- Pause Button -->
-                    <button onclick="togglePause()" class="util-btn w-12 h-12">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </button>
-                </div>
-
-                <!-- Red Score -->
-                <div class="glass-panel text-red-600 px-5 py-2 rounded-xl flex flex-col items-center min-w-[80px] transform skew-x-[-10deg]">
-                    <span class="text-[10px] uppercase font-black tracking-widest opacity-70 transform skew-x-[10deg]">Red</span>
-                    <span id="score-red" class="text-3xl font-black transform skew-x-[10deg] hud-stat">0</span>
-                </div>
+            <div id="connection-status" class="mb-6 flex flex-col items-center">
+                <div class="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-2"></div>
+                <p class="text-sm font-bold text-slate-400">CONNECTING TO SERVER...</p>
             </div>
 
-            <!-- Central Feed -->
-            <div class="flex flex-col items-center w-full pointer-events-none">
-                <div id="message-box" class="hidden px-6 py-2 rounded-full font-black text-sm text-white shadow-lg backdrop-blur-md border border-white/20 text-center transform transition-all duration-200">
-                    Action Text
-                </div>
-            </div>
-        </div>
-
-        <!-- Powerup Indicator -->
-        <div id="powerup-display" class="pointer-events-none absolute bottom-24 left-1/2 transform -translate-x-1/2 flex flex-col items-center gap-1 transition-opacity duration-300 opacity-0">
-            <div class="flex gap-1 mb-1">
-                <div id="star-1" class="text-xl transition-all duration-300">★</div>
-                <div id="star-2" class="text-xl transition-all duration-300">★</div>
-                <div id="star-3" class="text-xl transition-all duration-300">★</div>
-            </div>
-            <div id="powerup-text" class="text-white font-black text-sm px-4 py-1 rounded-full shadow-lg tracking-wider uppercase backdrop-blur-sm border border-white/40">
-                STREAK START
-            </div>
-        </div>
-
-        <!-- Start/End Screen -->
-        <div id="overlay-screen" class="pointer-events-auto absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center z-50 transition-opacity duration-500">
-            <!-- Settings Toggle (Top Right) -->
-            <button onclick="openSettings()" class="absolute top-6 right-6 bg-white/10 hover:bg-white/20 p-3 rounded-full transition-colors text-white">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+            <button id="btn-play" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
+                WAITING FOR SERVER...
             </button>
-
-            <div class="bg-white/95 p-6 rounded-3xl shadow-2xl text-center max-w-2xl w-full mx-4 border border-white/50 animate-pop max-h-[95vh] overflow-y-auto">
-                <h1 id="game-title" class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-400 mb-2 tracking-tighter filter drop-shadow-sm">SNOWBRAWL</h1>
-                <p class="text-slate-500 font-bold mb-6 tracking-widest text-xs uppercase">World War Edition</p>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left mb-6">
-                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                        <h3 class="font-bold text-blue-800 mb-2 text-sm uppercase">Controls</h3>
-                        <ul class="text-sm text-slate-600 space-y-1">
-                            <li class="flex items-center gap-2"><span class="bg-slate-200 px-2 py-0.5 rounded text-xs font-bold">L-Stick</span> Move</li>
-                            <li class="flex items-center gap-2"><span class="bg-blue-100 text-blue-600 px-2 py-0.5 rounded text-xs font-bold">Screen</span> Drag to Look</li>
-                            <li class="flex items-center gap-2"><span class="bg-red-100 text-red-600 px-2 py-0.5 rounded text-xs font-bold">Throw</span> Tap/Hold</li>
-                            <li class="flex items-center gap-2"><span class="bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded text-xs font-bold">Dash</span> Dodge</li>
-                        </ul>
-                    </div>
-                    <div class="bg-orange-50 p-4 rounded-xl border border-orange-100">
-                        <h3 class="font-bold text-orange-800 mb-2 text-sm uppercase">Updates</h3>
-                        <ul class="text-sm text-slate-600 space-y-1">
-                            <li>⚙️ <b>Settings:</b> Resize buttons for mobile!</li>
-                            <li>🎥 <b>Free Cam:</b> Drag to scout. Click target to reset.</li>
-                            <li>🔊 <b>Sound:</b> Procedural SFX enabled.</li>
-                            <li>💀 <b>Survival:</b> Try the 1v5 Challenge!</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="mb-2">
-                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Select Map Size</label>
-                    <div class="flex justify-center gap-2 mb-4">
-                        <button onclick="setMapSize('auto')" id="btn-map-auto" class="map-btn bg-slate-800 text-white px-3 py-1 rounded text-xs font-bold ring-2 ring-slate-800">Auto</button>
-                        <button onclick="setMapSize('small')" id="btn-map-small" class="map-btn bg-slate-200 text-slate-600 px-3 py-1 rounded text-xs font-bold">Small</button>
-                        <button onclick="setMapSize('huge')" id="btn-map-huge" class="map-btn bg-slate-200 text-slate-600 px-3 py-1 rounded text-xs font-bold">Huge</button>
-                    </div>
-                </div>
-
-                <h3 class="text-slate-400 font-bold mb-3 uppercase text-xs tracking-widest">Deploy Squad</h3>
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-2">
-                    <button onclick="startGame(1, 1)" class="mode-card bg-slate-50 p-3 rounded-xl shadow-sm hover:shadow-md">
-                        <div class="text-xl mb-1">⚔️</div>
-                        <div class="font-bold text-slate-700 text-sm">1v1 Duel</div>
-                    </button>
-                    <button onclick="startGame(1, 5)" class="mode-card bg-red-50 p-3 rounded-xl shadow-sm hover:shadow-md border border-red-100">
-                        <div class="text-xl mb-1">💀</div>
-                        <div class="font-bold text-red-800 text-sm">1v5 Survival</div>
-                    </button>
-                    <button onclick="startGame(5, 5)" class="mode-card bg-slate-50 p-3 rounded-xl shadow-sm hover:shadow-md">
-                        <div class="text-xl mb-1">👥</div>
-                        <div class="font-bold text-slate-700 text-sm">5v5 Squads</div>
-                    </button>
-                    <button onclick="startGame(15, 15)" class="mode-card bg-slate-50 p-3 rounded-xl shadow-sm hover:shadow-md">
-                        <div class="text-xl mb-1">🌪️</div>
-                        <div class="font-bold text-slate-700 text-sm">15v15 War</div>
-                    </button>
-                    <button onclick="startGame(50, 50)" class="mode-card bg-gradient-to-br from-red-50 to-orange-50 p-3 rounded-xl shadow-sm hover:shadow-md border border-orange-200 md:col-span-2">
-                        <div class="text-xl mb-1">💥</div>
-                        <div class="font-bold text-red-700 text-sm">50v50 MASSIVE</div>
-                    </button>
-                </div>
-            </div>
         </div>
+    </div>
 
-        <!-- Pause Menu -->
-        <div id="pause-menu" class="hidden absolute inset-0 flex flex-col items-center justify-center pointer-events-auto">
-            <div class="bg-white p-8 rounded-3xl shadow-2xl text-center w-72 animate-pop">
-                <h2 class="text-2xl font-black text-slate-800 mb-6">PAUSED</h2>
-                <div class="flex flex-col gap-3">
-                    <button onclick="togglePause()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-xl shadow transition-colors">
-                        RESUME
-                    </button>
-                    <button onclick="openSettings()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-6 rounded-xl transition-colors">
-                        SETTINGS
-                    </button>
-                    <button onclick="quitGame()" class="bg-red-50 hover:bg-red-100 text-red-700 font-bold py-3 px-6 rounded-xl transition-colors">
-                        QUIT TO MENU
-                    </button>
-                </div>
+    <!-- UI Overlay (HUD) -->
+    <div id="ui-layer" class="hidden absolute inset-0 pointer-events-none flex flex-col justify-between p-4 overflow-hidden z-40">
+        <div class="flex justify-between items-start w-full pointer-events-auto">
+            <div class="glass-panel text-blue-600 px-5 py-2 rounded-xl flex flex-col items-center min-w-[80px] transform skew-x-[-10deg]">
+                <span class="text-[10px] uppercase font-black opacity-70 skew-x-[10deg]">Blue</span>
+                <span id="score-blue" class="text-3xl font-black skew-x-[10deg]">0</span>
             </div>
-        </div>
-
-        <!-- Settings Modal -->
-        <div id="settings-modal" class="hidden absolute inset-0 flex flex-col items-center justify-center pointer-events-auto">
-            <div class="bg-white p-8 rounded-3xl shadow-2xl w-80 animate-pop">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-black text-slate-800">SETTINGS</h2>
-                    <button onclick="closeSettings()" class="text-slate-400 hover:text-slate-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-                
-                <div class="mb-6">
-                    <div class="flex justify-between mb-2">
-                        <label class="font-bold text-slate-600 text-sm uppercase tracking-wider">Button Size</label>
-                        <span id="btn-scale-val" class="font-bold text-blue-600 text-sm">100%</span>
-                    </div>
-                    <input type="range" id="btn-scale-slider" min="0.5" max="1.5" step="0.1" value="1.0" class="w-full" oninput="updateBtnScale(this.value)">
-                    <p class="text-xs text-slate-400 mt-2">Adjusts the joystick and action buttons.</p>
-                </div>
-
-                <button onclick="closeSettings()" class="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700 transition-colors">
-                    DONE
-                </button>
+            <div class="glass-panel text-red-600 px-5 py-2 rounded-xl flex flex-col items-center min-w-[80px] transform skew-x-[-10deg]">
+                <span class="text-[10px] uppercase font-black opacity-70 skew-x-[10deg]">Red</span>
+                <span id="score-red" class="text-3xl font-black skew-x-[10deg]">0</span>
             </div>
         </div>
     </div>
 
-    <!-- Touch Controls -->
-    <div id="controls-layer" class="hidden absolute inset-0 z-20 overflow-hidden pointer-events-none">
+    <!-- Controls Layer -->
+    <div id="controls-layer" class="hidden absolute inset-0 z-30 overflow-hidden pointer-events-none">
         <div id="joystick-zone">
             <div class="w-full h-full rounded-full border-2 border-white/30 bg-gradient-to-br from-white/10 to-transparent relative backdrop-blur-sm shadow-xl">
-                <div id="joystick-knob" class="absolute w-12 h-12 bg-white rounded-full shadow-lg top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none border border-slate-200"></div>
+                <div id="joystick-knob" class="absolute w-12 h-12 bg-white rounded-full shadow-lg top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border border-slate-200"></div>
             </div>
         </div>
 
         <div id="action-zone">
-            <div class="action-row">
-                <!-- Dash Button -->
-                <div id="btn-dash" class="control-btn w-16 h-16 flex items-center justify-center bg-yellow-400/80 active:bg-yellow-500 shadow-lg shadow-yellow-500/20">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white drop-shadow-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                    </svg>
-                    <div id="dash-cooldown" class="absolute inset-0 bg-black/40 origin-bottom scale-y-0 transition-transform duration-75 pointer-events-none"></div>
+            <div class="flex gap-4 items-end">
+                <!-- Dash -->
+                <div id="btn-dash" class="control-btn w-16 h-16 flex items-center justify-center bg-yellow-400/80 active:bg-yellow-500 shadow-lg">
+                    <svg class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
                 </div>
-
-                <!-- Throw Button -->
-                <div id="btn-throw" class="control-btn w-24 h-24 flex items-center justify-center bg-gradient-to-br from-red-500 to-red-600 active:from-red-600 active:to-red-700 shadow-xl shadow-red-500/30">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
-                    </svg>
+                <!-- Throw -->
+                <div id="btn-throw" class="control-btn w-24 h-24 flex items-center justify-center bg-gradient-to-br from-red-500 to-red-600 active:from-red-600 shadow-xl">
+                    <svg class="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" /></svg>
                     <svg class="absolute inset-0 w-full h-full rotate-[-90deg] pointer-events-none" viewBox="0 0 100 100">
                         <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="4" />
                         <circle id="charge-indicator" cx="50" cy="50" r="46" fill="none" stroke="white" stroke-width="4" stroke-dasharray="289" stroke-dashoffset="289" style="transition: stroke-dashoffset 0.1s linear;" />
                     </svg>
                 </div>
             </div>
-            
-            <!-- Gather/Interact (Small Button) -->
+            <!-- Gather -->
             <div id="btn-gather" class="control-btn w-16 h-16 flex items-center justify-center bg-blue-500/80 mt-2 shadow-lg active:bg-blue-600">
-                <svg id="icon-hand" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11" />
-                </svg>
+                <svg class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-width="2.5" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11" /></svg>
             </div>
         </div>
     </div>
 
 <script>
 /**
- * AUDIO ENGINE
- * Procedural sound generation using Web Audio API
+ * --- CONFIGURATION ---
+ * REPLACE WITH YOUR RENDER.COM URL
  */
- const Audio = {
+const SERVER_URL = "http://localhost:3000"; 
+// Example: const SERVER_URL = "https://snowbrawl-backend.onrender.com";
+
+const socket = io(SERVER_URL);
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+const CONFIG = {
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    cameraLerp: 0.1,
+    screenShake: 0
+};
+
+// Client State
+const STATE = {
+    id: null,
+    worldWidth: 2000,
+    worldHeight: 2000,
+    camera: { x: 0, y: 0 },
+    players: {}, // VisualPlayer instances
+    obstacles: [],
+    snowballs: [],
+    particles: [],
+    popups: [],
+    footprints: [],
+    inputs: { moveX: 0, moveY: 0, angle: 0, dash: false, gather: false, throwStart: false, throwRelease: false }
+};
+
+/**
+ * --- AUDIO ENGINE (From all-controls.html) ---
+ */
+const Audio = {
     ctx: null,
     init: function() {
-        if (!this.ctx) {
-            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (this.ctx.state === 'suspended') {
-            this.ctx.resume();
-        }
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
     },
     playTone: function(freq, type, duration, vol, slideTo = null) {
         if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-        if (slideTo) {
-            osc.frequency.exponentialRampToValueAtTime(slideTo, this.ctx.currentTime + duration);
-        }
+        osc.type = type; osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, this.ctx.currentTime + duration);
         gain.gain.setValueAtTime(vol, this.ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        osc.stop(this.ctx.currentTime + duration);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + duration);
     },
     playNoise: function(duration, vol) {
         if (!this.ctx) return;
         const bufferSize = this.ctx.sampleRate * duration;
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-            data[i] = Math.random() * 2 - 1;
-        }
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
         const noise = this.ctx.createBufferSource();
         noise.buffer = buffer;
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(vol, this.ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
-        noise.connect(gain);
-        gain.connect(this.ctx.destination);
+        noise.connect(gain); gain.connect(this.ctx.destination);
         noise.start();
     },
     sfx: {
-        throw: () => {
-            Audio.playNoise(0.15, 0.3);
-            Audio.playTone(400, 'triangle', 0.1, 0.2, 100);
-        },
-        hit: () => {
-            Audio.playNoise(0.2, 0.5);
-            Audio.playTone(100, 'square', 0.1, 0.4, 50);
-        },
-        dash: () => {
-            Audio.playNoise(0.3, 0.2);
-            Audio.playTone(300, 'sine', 0.3, 0.3, 800);
-        },
-        collect: () => {
-            Audio.playTone(600, 'sine', 0.1, 0.1, 800);
-        },
-        ui: () => {
-            Audio.playTone(1200, 'sine', 0.05, 0.1);
-        },
-        grenade: () => {
-            Audio.playNoise(0.5, 0.8);
-            Audio.playTone(100, 'sawtooth', 0.4, 0.5, 10);
-        }
+        throw: () => { Audio.playNoise(0.1, 0.2); Audio.playTone(400, 'triangle', 0.1, 0.2, 100); },
+        hit: () => { Audio.playNoise(0.2, 0.5); Audio.playTone(100, 'square', 0.1, 0.4, 50); },
+        dash: () => { Audio.playNoise(0.3, 0.2); Audio.playTone(300, 'sine', 0.3, 0.3, 800); },
+        collect: () => Audio.playTone(600, 'sine', 0.1, 0.1, 800),
+        ui: () => Audio.playTone(1200, 'sine', 0.05, 0.1)
     }
 };
 
 /**
- * Game Configuration
+ * --- VISUAL CLASSES ---
  */
-const CONFIG = {
-    friction: 0.92, 
-    acceleration: 0.8,
-    maxSpeed: 4.5,
-    ballSpeedBase: 9,
-    ballSpeedMax: 18,
-    chargeTime: 60,
-    dashSpeed: 12,
-    dashDuration: 12,
-    dashCooldown: 90,
-    gatherTime: 45,
-    viewportWidth: window.innerWidth,
-    viewportHeight: window.innerHeight,
-    worldWidth: window.innerWidth, // Dynamic
-    worldHeight: window.innerHeight, // Dynamic
-    cameraLerp: 0.1,
-    screenShake: 0,
-    mapSizePreference: 'auto'
-};
-
-const STATE = {
-    screen: 'menu', 
-    paused: false,
-    players: [],
-    snowballs: [],
-    particles: [],
-    obstacles: [],
-    popups: [],
-    footprints: [],
-    joystick: { active: false, x: 0, y: 0, originX: 0, originY: 0, dx: 0, dy: 0 },
-    keys: { w: false, a: false, s: false, d: false },
-    inputs: { moveX: 0, moveY: 0, throw: false, dash: false, gather: false },
-    chargeLevel: 0,
-    
-    // Camera System
-    camera: { x: 0, y: 0 },
-    cameraMode: 'LOCKED', // 'LOCKED' or 'FREE'
-    dragStart: { x: 0, y: 0 },
-    isDragging: false,
-    
-    frameCount: 0
-};
-
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d', { alpha: false });
-
-/**
- * UI Functions
- */
-function setMapSize(size) {
-    Audio.sfx.ui();
-    CONFIG.mapSizePreference = size;
-    document.querySelectorAll('.map-btn').forEach(b => {
-        b.classList.remove('bg-slate-800', 'text-white', 'ring-2');
-        b.classList.add('bg-slate-200', 'text-slate-600');
-    });
-    const btn = document.getElementById(`btn-map-${size}`);
-    btn.classList.remove('bg-slate-200', 'text-slate-600');
-    btn.classList.add('bg-slate-800', 'text-white', 'ring-2');
-}
-
-function togglePause() {
-    Audio.sfx.ui();
-    STATE.paused = !STATE.paused;
-    const menu = document.getElementById('pause-menu');
-    // Hide settings if open inside pause
-    document.getElementById('settings-modal').classList.add('hidden');
-    
-    if (STATE.paused) {
-        menu.classList.remove('hidden');
-    } else {
-        menu.classList.add('hidden');
-    }
-}
-
-function quitGame() {
-    Audio.sfx.ui();
-    STATE.paused = false;
-    document.getElementById('pause-menu').classList.add('hidden');
-    document.getElementById('settings-modal').classList.add('hidden');
-    document.getElementById('overlay-screen').classList.remove('hidden');
-    document.getElementById('controls-layer').classList.add('hidden');
-    STATE.screen = 'menu';
-}
-
-function recenterCamera() {
-    Audio.sfx.ui();
-    STATE.cameraMode = 'LOCKED';
-    
-    // Hide recenter button
-    const btn = document.getElementById('btn-recenter');
-    btn.classList.remove('opacity-100');
-    btn.classList.add('opacity-0');
-    setTimeout(() => { if(STATE.cameraMode === 'LOCKED') btn.classList.add('hidden'); }, 300);
-}
-
-// Settings Logic
-function openSettings() {
-    Audio.sfx.ui();
-    // Close other menus visually
-    document.getElementById('pause-menu').classList.add('hidden');
-    document.getElementById('settings-modal').classList.remove('hidden');
-}
-
-function closeSettings() {
-    Audio.sfx.ui();
-    document.getElementById('settings-modal').classList.add('hidden');
-    // If we were paused, reopen pause menu
-    if (STATE.paused) {
-        document.getElementById('pause-menu').classList.remove('hidden');
-    }
-}
-
-function updateBtnScale(val) {
-    document.documentElement.style.setProperty('--btn-scale', val);
-    document.getElementById('btn-scale-val').innerText = Math.round(val * 100) + '%';
-    localStorage.setItem('snowbrawl_scale', val);
-}
-
-// Init Scale
-const savedScale = localStorage.getItem('snowbrawl_scale');
-if(savedScale) {
-    updateBtnScale(savedScale);
-    document.getElementById('btn-scale-slider').value = savedScale;
-}
-
-
-/**
- * Classes
- */
-class Entity {
-    constructor(x, y, radius) {
-        this.x = x;
-        this.y = y;
-        this.z = 0;
-        this.radius = radius;
-        this.vx = 0;
-        this.vy = 0;
-    }
-}
-
-class Obstacle extends Entity {
-    constructor(x, y, type) {
-        super(x, y, type === 'tree' ? 30 : 20); // Slightly larger for gameplay clarity
-        this.type = type;
-        this.health = type === 'snowman' ? 3 : 15;
-        this.wobble = 0;
-    }
-    
-    hit(damage) {
-        this.health -= damage;
-        this.wobble = 10;
-        createParticles(this.x, this.y, '#FFFFFF', 5);
-        if (this.health <= 0) {
-            createParticles(this.x, this.y, '#FFFFFF', 20);
-            return true;
-        }
-        return false;
-    }
-
-    draw(camX, camY) {
-        if (!isOnScreen(this.x, this.y, this.radius + 20, camX, camY)) return;
-
-        const drawX = this.x - camX;
-        const drawY = this.y - camY;
+class VisualPlayer {
+    constructor(data) {
+        this.id = data.id;
+        this.team = data.team;
+        // Interpolation props
+        this.x = data.x;
+        this.y = data.y;
+        this.targetX = data.x;
+        this.targetY = data.y;
         
-        ctx.fillStyle = 'rgba(0,0,30,0.15)';
-        ctx.beginPath();
-        ctx.ellipse(drawX, drawY + this.radius/2, this.radius, this.radius * 0.4, 0, 0, Math.PI * 2);
-        ctx.fill();
+        // Cosmetics from server
+        this.skinColor = data.skinColor || '#ffdbac';
+        this.hatType = data.hatType || 0;
+        this.teamColor = this.team === 'blue' ? '#2196F3' : '#F44336';
+        this.teamColorDark = this.team === 'blue' ? '#1976D2' : '#D32F2F';
 
-        const shakeX = Math.sin(Date.now() / 50) * this.wobble;
-        if (this.wobble > 0) this.wobble *= 0.9;
-
-        if (this.type === 'snowman') {
-            ctx.fillStyle = '#f0f9ff';
-            ctx.beginPath(); ctx.arc(drawX + shakeX, drawY, 16, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(drawX + shakeX, drawY - 20, 12, 0, Math.PI*2); ctx.fill();
-            ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 4;
-            ctx.beginPath(); ctx.moveTo(drawX - 6 + shakeX, drawY - 16); ctx.lineTo(drawX + 6 + shakeX, drawY - 16); ctx.stroke();
-            ctx.fillStyle = '#333';
-            ctx.beginPath(); ctx.arc(drawX - 3 + shakeX, drawY - 22, 1.5, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(drawX + 3 + shakeX, drawY - 22, 1.5, 0, Math.PI*2); ctx.fill();
-        } else if (this.type === 'tree') {
-            ctx.fillStyle = '#1e4620';
-            ctx.beginPath(); ctx.moveTo(drawX + shakeX, drawY - 55); ctx.lineTo(drawX + 25 + shakeX, drawY + 10); ctx.lineTo(drawX - 25 + shakeX, drawY + 10); ctx.fill();
-            ctx.fillStyle = '#2d5a27';
-            ctx.beginPath(); ctx.moveTo(drawX + shakeX, drawY - 35); ctx.lineTo(drawX + 20 + shakeX, drawY + 10); ctx.lineTo(drawX - 20 + shakeX, drawY + 10); ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.beginPath(); ctx.moveTo(drawX + shakeX, drawY - 55); ctx.lineTo(drawX + 8 + shakeX, drawY - 40); ctx.lineTo(drawX - 8 + shakeX, drawY - 40); ctx.fill();
-        }
-    }
-}
-
-class Snowball extends Entity {
-    constructor(x, y, angle, speed, ownerId, team, isGrenade = false) {
-        super(x, y, 4);
-        this.vx = Math.cos(angle) * speed;
-        this.vy = Math.sin(angle) * speed;
-        this.z = 14;
-        this.vz = 2; 
-        this.ownerId = ownerId;
-        this.team = team;
-        this.isGrenade = isGrenade;
-        this.active = true;
-        this.trail = [];
-        this.rotation = 0;
-        this.rotSpeed = (Math.random() > 0.5 ? 1 : -1) * 0.3;
-        
-        Audio.sfx.throw();
-    }
-
-    update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.z += this.vz;
-        this.vz -= 0.15;
-        this.rotation += this.rotSpeed;
-
-        if (STATE.frameCount % 3 === 0) {
-            this.trail.push({x: this.x, y: this.y, life: 8});
-        }
-        for (let t of this.trail) t.life--;
-        this.trail = this.trail.filter(t => t.life > 0);
-
-        if (this.z < 0) this.active = false; 
-        if (this.x < 0 || this.x > CONFIG.worldWidth || this.y < 0 || this.y > CONFIG.worldHeight) this.active = false;
-    }
-
-    draw(camX, camY) {
-        if (!isOnScreen(this.x, this.y, 20, camX, camY)) return;
-
-        const drawX = this.x - camX;
-        const drawY = this.y - camY - this.z;
-        
-        ctx.fillStyle = 'rgba(0,0,0,0.15)';
-        ctx.beginPath();
-        ctx.arc(this.x - camX, this.y - camY, this.radius + (this.z/15), 0, Math.PI*2);
-        ctx.fill();
-
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-        ctx.lineWidth = this.radius * 1.5;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        if (this.trail.length > 0) {
-            ctx.moveTo(this.trail[0].x - camX, this.trail[0].y - camY - this.z);
-            for (let t of this.trail) ctx.lineTo(t.x - camX, t.y - camY - this.z);
-            ctx.stroke();
-        }
-
-        ctx.save();
-        ctx.translate(drawX, drawY);
-        ctx.rotate(this.rotation);
-        
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI*2);
-        ctx.fillStyle = this.isGrenade ? (STATE.frameCount % 8 < 4 ? '#ff5252' : '#fff') : '#FFF';
-        ctx.fill();
-        
-        ctx.fillStyle = '#e6f2ff';
-        ctx.beginPath(); ctx.arc(1, -1, 1.5, 0, Math.PI*2); ctx.fill();
-        
-        ctx.restore();
-    }
-}
-
-class Player extends Entity {
-    constructor(id, team, isHuman = false) {
-        super(0, 0, 14);
-        this.id = id;
-        this.team = team;
-        this.isHuman = isHuman;
-        
-        // Dynamic Spawn Logic based on World Size
-        const margin = 150;
-        const xBase = team === 'blue' ? margin : CONFIG.worldWidth - margin;
-        this.x = xBase + (Math.random() - 0.5) * 200;
-        this.y = (Math.random() * (CONFIG.worldHeight - margin*2)) + margin;
-        
-        this.skinColor = ['#ffdbac', '#f1c27d', '#e0ac69', '#8d5524', '#c68642'][Math.floor(Math.random()*5)];
-        this.hatType = Math.floor(Math.random() * 4); 
-        this.teamColor = team === 'blue' ? '#2196F3' : '#F44336';
-        this.teamColorDark = team === 'blue' ? '#1976D2' : '#D32F2F';
-
-        this.hasBall = true;
-        this.isFrozen = false;
-        this.thawProgress = 0;
-        this.beingRevived = false;
-        this.streak = 0;
-        this.specialAmmo = null;
-        this.gatherProgress = 0;
-        
-        this.dashTimer = 0;
-        this.dashCooldownTimer = 0;
-        this.throwTimer = 0;
-        this.charge = 0;
-        
-        this.aiState = 'idle';
-        this.aiTarget = {x: this.x, y: this.y};
-        this.aiTimer = 0;
-
-        this.facingAngle = team === 'blue' ? 0 : Math.PI;
+        // Anim
+        this.facingAngle = 0;
         this.walkCycle = 0;
         this.flashTimer = 0;
     }
 
-    update() {
+    update(serverData) {
+        this.targetX = serverData.x;
+        this.targetY = serverData.y;
+        this.isFrozen = serverData.isFrozen;
+        this.hasBall = serverData.hasBall;
+        this.chargeLevel = serverData.chargeLevel;
+        this.gatherProgress = serverData.gatherProgress;
+
+        // Smooth Interpolation
+        this.x += (this.targetX - this.x) * 0.25;
+        this.y += (this.targetY - this.y) * 0.25;
+
+        // Walk Cycle Calculation
+        const dx = this.targetX - this.x;
+        const dy = this.targetY - this.y;
+        const speed = Math.hypot(dx, dy);
+        
+        if (speed > 1) {
+            this.facingAngle = Math.atan2(dy, dx);
+            this.walkCycle += 0.2 + (speed * 0.05);
+            // Local Footprints
+            if (Math.random() < 0.1) {
+                STATE.footprints.push({x: this.x, y: this.y + 10, life: 200, angle: this.facingAngle});
+            }
+        } else {
+            this.walkCycle = 0;
+        }
+        
         if (this.flashTimer > 0) this.flashTimer--;
-        if (this.dashCooldownTimer > 0) this.dashCooldownTimer--;
-        if (this.throwTimer > 0) this.throwTimer--;
-        
-        // Frozen State & Thawing Logic
-        if (this.isFrozen) {
-            this.vx *= 0.8; this.vy *= 0.8;
-            this.x += this.vx; this.y += this.vy;
-            this.checkBounds();
-            
-            // 1. Center Heat Source
-            const distCenter = Math.hypot(this.x - CONFIG.worldWidth/2, this.y - CONFIG.worldHeight/2);
-            let healing = distCenter < 150 ? 1 : 0;
-
-            // 2. Teammate Revive
-            this.beingRevived = false;
-            STATE.players.forEach(p => {
-                if (p.team === this.team && !p.isFrozen && Math.hypot(p.x - this.x, p.y - this.y) < 40) {
-                    healing += 1.5; // Teammates heal faster than fire
-                    this.beingRevived = true;
-                }
-            });
-
-            if (healing > 0) {
-                this.thawProgress += healing;
-                if (STATE.frameCount % 10 === 0) {
-                    createParticles(this.x, this.y - 10, '#FFF', 1);
-                    if(this.isHuman && this.beingRevived) addPopup(this.x, this.y, "Reviving...", "#00FF00");
-                }
-                
-                if (this.thawProgress > 180) {
-                    this.isFrozen = false;
-                    this.thawProgress = 0;
-                    this.hasBall = true;
-                    createParticles(this.x, this.y, '#FFF', 20);
-                    Audio.sfx.collect();
-                    addPopup(this.x, this.y, "REVIVED!", "#00FF00");
-                }
-            } else {
-                 this.thawProgress = Math.max(0, this.thawProgress - 0.5);
-            }
-            return;
-        }
-
-        let ax = 0, ay = 0;
-        let isMoving = false;
-        
-        if (this.isHuman) {
-            if (STATE.inputs.gather && !this.hasBall) {
-                this.gatherProgress++;
-                this.vx *= 0.8; this.vy *= 0.8;
-                if (STATE.frameCount % 10 === 0) Audio.sfx.collect();
-                if (STATE.frameCount % 5 === 0) createParticles(this.x, this.y + 10, '#EEE', 1);
-                if (this.gatherProgress >= CONFIG.gatherTime) {
-                    this.hasBall = true;
-                    this.gatherProgress = 0;
-                    createParticles(this.x, this.y, '#FFF', 10);
-                    Audio.sfx.collect();
-                    addPopup(this.x, this.y - 20, "RELOADED", "#FFF");
-                }
-            } else {
-                this.gatherProgress = Math.max(0, this.gatherProgress - 5);
-                
-                if (STATE.inputs.dash && this.dashCooldownTimer === 0 && (STATE.inputs.moveX !== 0 || STATE.inputs.moveY !== 0)) {
-                    this.dashTimer = CONFIG.dashDuration;
-                    this.dashCooldownTimer = CONFIG.dashCooldown;
-                    const angle = Math.atan2(STATE.inputs.moveY, STATE.inputs.moveX);
-                    this.vx = Math.cos(angle) * CONFIG.dashSpeed;
-                    this.vy = Math.sin(angle) * CONFIG.dashSpeed;
-                    createParticles(this.x, this.y, '#FFF', 10);
-                    CONFIG.screenShake = 2;
-                    Audio.sfx.dash();
-                }
-
-                if (this.dashTimer > 0) {
-                    this.dashTimer--;
-                    createParticles(this.x, this.y, '#EEE', 1);
-                } else {
-                    ax = STATE.inputs.moveX * CONFIG.acceleration;
-                    ay = STATE.inputs.moveY * CONFIG.acceleration;
-                    if (STATE.inputs.moveX !== 0 || STATE.inputs.moveY !== 0) isMoving = true;
-                    
-                    if (STATE.inputs.throw && this.hasBall) {
-                        STATE.chargeLevel = Math.min(STATE.chargeLevel + 1, CONFIG.chargeTime);
-                        ax *= 0.3; ay *= 0.3;
-                    } else if (!STATE.inputs.throw && STATE.chargeLevel > 0) {
-                        this.releaseThrow();
-                    }
-                }
-            }
-            
-            const dashOverlay = document.getElementById('dash-cooldown');
-            if (dashOverlay) dashOverlay.style.transform = `scaleY(${this.dashCooldownTimer / CONFIG.dashCooldown})`;
-            const chargeRing = document.getElementById('charge-indicator');
-            if (chargeRing) chargeRing.style.strokeDashoffset = 289 - (STATE.chargeLevel / CONFIG.chargeTime) * 289;
-
-        } else {
-            this.handleAI();
-            if (this.vx !== 0 || this.vy !== 0) isMoving = true;
-        }
-
-        if (this.dashTimer <= 0) {
-            this.vx += ax; this.vy += ay;
-            this.vx *= CONFIG.friction; this.vy *= CONFIG.friction;
-            const speed = Math.hypot(this.vx, this.vy);
-            if (speed > CONFIG.maxSpeed) {
-                this.vx = (this.vx / speed) * CONFIG.maxSpeed;
-                this.vy = (this.vy / speed) * CONFIG.maxSpeed;
-            }
-        }
-
-        this.x += this.vx; this.y += this.vy;
-        
-        if (isMoving) {
-            this.facingAngle = Math.atan2(this.vy, this.vx);
-            this.walkCycle += 0.2 + (Math.hypot(this.vx, this.vy) * 0.05);
-            if (STATE.frameCount % 20 === 0 && !this.isFrozen) {
-                STATE.footprints.push({x: this.x, y: this.y + 10, life: 300, angle: this.facingAngle});
-            }
-        } else {
-            this.walkCycle = 0; 
-        }
-
-        this.checkBounds();
-        this.checkCollisions();
-    }
-    
-    checkBounds() {
-        if (this.x < this.radius) { this.x = this.radius; this.vx *= -0.5; }
-        if (this.x > CONFIG.worldWidth - this.radius) { this.x = CONFIG.worldWidth - this.radius; this.vx *= -0.5; }
-        if (this.y < this.radius) { this.y = this.radius; this.vy *= -0.5; }
-        if (this.y > CONFIG.worldHeight - this.radius) { this.y = CONFIG.worldHeight - this.radius; this.vy *= -0.5; }
-    }
-
-    checkCollisions() {
-        STATE.obstacles.forEach(obs => {
-            if (obs.health <= 0) return;
-            const dx = this.x - obs.x;
-            const dy = this.y - obs.y;
-            const dist = Math.hypot(dx, dy);
-            const minDist = this.radius + obs.radius;
-            if (dist < minDist) {
-                const angle = Math.atan2(dy, dx);
-                const push = minDist - dist;
-                this.x += Math.cos(angle) * push;
-                this.y += Math.sin(angle) * push;
-                this.vx *= 0.8; this.vy *= 0.8;
-            }
-        });
-        
-        STATE.players.forEach(p => {
-            if (p !== this && !p.isFrozen) {
-                const dx = this.x - p.x;
-                const dy = this.y - p.y;
-                const dist = Math.hypot(dx, dy);
-                if (dist < this.radius * 2) {
-                    const angle = Math.atan2(dy, dx);
-                    this.vx += Math.cos(angle) * 0.5;
-                    this.vy += Math.sin(angle) * 0.5;
-                }
-            }
-        });
-    }
-
-    releaseThrow() {
-        const isCharged = STATE.chargeLevel > CONFIG.chargeTime * 0.8;
-        let speed = CONFIG.ballSpeedBase;
-        
-        let angle = this.facingAngle;
-
-        let bestTarget = null;
-        let bestScore = -1;
-        
-        // Auto-aim within cone
-        STATE.players.forEach(p => {
-            if (p.team !== this.team && !p.isFrozen) {
-                const dx = p.x - this.x;
-                const dy = p.y - this.y;
-                const dist = Math.hypot(dx, dy);
-                const angTo = Math.atan2(dy, dx);
-                let diff = angTo - angle;
-                while(diff < -Math.PI) diff += Math.PI*2;
-                while(diff > Math.PI) diff -= Math.PI*2;
-                
-                if (Math.abs(diff) < 0.6 && dist < 600) {
-                     const score = (1 - Math.abs(diff)) * (1000 - dist);
-                     if (score > bestScore) { bestScore = score; bestTarget = p; }
-                }
-            }
-        });
-
-        if (bestTarget) {
-            angle = Math.atan2(bestTarget.y - this.y, bestTarget.x - this.x);
-        }
-
-        if (isCharged) {
-            speed = CONFIG.ballSpeedMax;
-            CONFIG.screenShake = 3;
-            if (this.isHuman) createParticles(this.x, this.y, '#FFD700', 10);
-        } else {
-            angle += (Math.random() - 0.5) * 0.2;
-        }
-
-        if (this.specialAmmo === 'grenade') {
-            STATE.snowballs.push(new Snowball(this.x, this.y, angle, speed * 0.8, this.id, this.team, true));
-            if (this.isHuman) addPopup(this.x, this.y - 20, "GRENADE!", "#FF5252");
-        } else {
-            STATE.snowballs.push(new Snowball(this.x, this.y, angle, speed, this.id, this.team));
-        }
-
-        this.hasBall = false;
-        this.specialAmmo = null;
-        STATE.chargeLevel = 0;
-        this.throwTimer = 30;
-    }
-
-    handleAI() {
-        this.aiTimer--;
-        if (this.isFrozen) return;
-
-        // 1. MEDIC LOGIC: Prioritize reviving nearby frozen teammates
-        const frozenMate = STATE.players.find(p => p.team === this.team && p.isFrozen && Math.hypot(p.x - this.x, p.y - this.y) < 300);
-        if (frozenMate) {
-            const dist = Math.hypot(frozenMate.x - this.x, frozenMate.y - this.y);
-            if (dist > 30) {
-                 // Move towards mate
-                 const angle = Math.atan2(frozenMate.y - this.y, frozenMate.x - this.x);
-                 this.vx += Math.cos(angle) * CONFIG.acceleration;
-                 this.vy += Math.sin(angle) * CONFIG.acceleration;
-            } else {
-                 // Stand still to heal
-                 this.vx *= 0.5; 
-                 this.vy *= 0.5;
-            }
-            return; // Medic duty overrides combat
-        }
-
-        // 2. COMBAT LOGIC
-        if (!this.hasBall) {
-            this.gatherProgress++;
-            this.vx *= 0.5; this.vy *= 0.5;
-            if (this.gatherProgress >= CONFIG.gatherTime) {
-                this.hasBall = true;
-                this.gatherProgress = 0;
-            }
-            return;
-        }
-        
-        if (this.aiTimer <= 0) {
-            this.aiTimer = 60 + Math.random() * 60;
-            const enemyBaseX = this.team === 'blue' ? CONFIG.worldWidth * 0.8 : CONFIG.worldWidth * 0.2;
-            this.aiTarget.x = enemyBaseX + (Math.random() - 0.5) * 500;
-            this.aiTarget.y = Math.random() * CONFIG.worldHeight;
-        }
-
-        const dx = this.aiTarget.x - this.x;
-        const dy = this.aiTarget.y - this.y;
-        const dist = Math.hypot(dx, dy);
-        
-        if (dist > 10) {
-            const angle = Math.atan2(dy, dx);
-            this.vx += Math.cos(angle) * CONFIG.acceleration * 0.5;
-            this.vy += Math.sin(angle) * CONFIG.acceleration * 0.5;
-        }
-
-        if (this.hasBall && this.throwTimer === 0) {
-            const nearestEnemy = STATE.players.find(p => p.team !== this.team && !p.isFrozen && Math.hypot(p.x - this.x, p.y - this.y) < 500);
-            if (nearestEnemy && Math.random() < 0.04) {
-                if (Math.random() < 0.3) STATE.chargeLevel = CONFIG.chargeTime; 
-                this.facingAngle = Math.atan2(nearestEnemy.y - this.y, nearestEnemy.x - this.x);
-                this.releaseThrow();
-            }
-        }
     }
 
     draw(camX, camY) {
-        if (!isOnScreen(this.x, this.y, 50, camX, camY)) return;
-
         const drawX = this.x - camX;
         const drawY = this.y - camY;
-        const scale = this.gatherProgress > 0 ? 0.9 : 1;
         const bob = Math.sin(this.walkCycle * 2) * 2;
-        
-        // Reviving Bar
-        if (this.isFrozen && this.thawProgress > 0) {
-             const barW = 30;
-             const pct = this.thawProgress / 180;
-             ctx.fillStyle = '#444';
-             ctx.fillRect(drawX - barW/2, drawY - 45, barW, 5);
-             ctx.fillStyle = '#0F0';
-             ctx.fillRect(drawX - barW/2, drawY - 45, barW * pct, 5);
-        }
+        const scale = this.gatherProgress > 0 ? 0.9 : 1;
 
-        if (this.isFrozen) {
-            ctx.fillStyle = 'rgba(179, 229, 252, 0.6)';
-            ctx.fillRect(drawX - 16, drawY - 24, 32, 40);
-            ctx.strokeStyle = '#FFF';
-            ctx.strokeRect(drawX - 16, drawY - 24, 32, 40);
-            ctx.fillStyle = this.teamColor;
-            ctx.beginPath(); ctx.arc(drawX, drawY - 10, 10, 0, Math.PI*2); ctx.fill();
-            return;
-        }
-
-        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-        ctx.beginPath();
-        ctx.ellipse(drawX, drawY + 12, 10, 5, 0, 0, Math.PI*2);
-        ctx.fill();
-
-        if (this.flashTimer > 0) {
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.fillStyle = '#FFF';
-        }
+        if (this.flashTimer > 0) { ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#FFF'; }
 
         ctx.save();
         ctx.translate(drawX, drawY + bob);
         ctx.scale(scale, scale);
 
-        const legOffset = Math.sin(this.walkCycle) * 6;
-        ctx.fillStyle = '#333'; 
-        ctx.beginPath(); ctx.arc(-6, 8 + legOffset, 4, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(6, 8 - legOffset, 4, 0, Math.PI*2); ctx.fill();
-
-        ctx.fillStyle = this.teamColor;
-        ctx.beginPath();
-        ctx.roundRect(-12, -10, 24, 20, 8);
-        ctx.fill();
-        ctx.fillStyle = this.teamColorDark;
-        ctx.fillRect(-2, -10, 4, 20);
-
-        ctx.fillStyle = '#EEE'; 
-        ctx.beginPath(); ctx.roundRect(-10, -12, 20, 6, 3); ctx.fill();
-        if (Math.hypot(this.vx, this.vy) > 0.5) {
-            const trailAng = this.facingAngle + Math.PI;
-            const tx = Math.cos(trailAng) * 12;
-            const ty = Math.sin(trailAng) * 12;
-            ctx.beginPath();
-            ctx.moveTo(0, -9);
-            ctx.lineTo(tx, -9 + ty);
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = '#EEE';
-            ctx.stroke();
-        }
-
-        ctx.fillStyle = this.skinColor;
-        ctx.beginPath(); ctx.arc(0, -16, 9, 0, Math.PI*2); ctx.fill();
-
-        if (this.hatType === 1) { 
-            ctx.fillStyle = this.teamColorDark;
-            ctx.beginPath(); ctx.arc(0, -20, 9, Math.PI, 0); ctx.fill();
-            ctx.beginPath(); ctx.arc(0, -24, 3, 0, Math.PI*2); ctx.fill();
-        } else if (this.hatType === 2) { 
-            ctx.fillStyle = '#555';
-            ctx.beginPath(); ctx.arc(0, -16, 9.5, Math.PI, 0); ctx.stroke();
-            ctx.fillStyle = '#FFF';
-            ctx.beginPath(); ctx.arc(-9, -16, 4, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(9, -16, 4, 0, Math.PI*2); ctx.fill();
-        } else if (this.hatType === 3) {
-             ctx.strokeStyle = this.teamColor;
-             ctx.lineWidth = 4;
-             ctx.beginPath(); ctx.arc(0, -16, 10, 0, Math.PI*2); ctx.stroke();
-        }
-
-        const eyeOffX = Math.cos(this.facingAngle) * 3;
-        const eyeOffY = Math.sin(this.facingAngle) * 3;
-        ctx.fillStyle = '#000';
-        
-        if (STATE.chargeLevel > 20) {
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = '#000';
-            ctx.beginPath(); ctx.moveTo(-3+eyeOffX, -16+eyeOffY); ctx.lineTo(-1+eyeOffX, -16+eyeOffY); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(1+eyeOffX, -16+eyeOffY); ctx.lineTo(3+eyeOffX, -16+eyeOffY); ctx.stroke();
+        if (this.isFrozen) {
+            ctx.fillStyle = 'rgba(179, 229, 252, 0.6)';
+            ctx.fillRect(-16, -24, 32, 40);
+            ctx.strokeStyle = '#FFF'; ctx.strokeRect(-16, -24, 32, 40);
+            ctx.fillStyle = this.teamColor; ctx.beginPath(); ctx.arc(0, -10, 10, 0, Math.PI*2); ctx.fill();
         } else {
+            // Legs
+            const legOffset = Math.sin(this.walkCycle) * 6;
+            ctx.fillStyle = '#333'; 
+            ctx.beginPath(); ctx.arc(-6, 8 + legOffset, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(6, 8 - legOffset, 4, 0, Math.PI*2); ctx.fill();
+
+            // Body
+            ctx.fillStyle = this.teamColor;
+            ctx.beginPath(); ctx.roundRect(-12, -10, 24, 20, 8); ctx.fill();
+            ctx.fillStyle = this.teamColorDark; ctx.fillRect(-2, -10, 4, 20);
+
+            // Head
+            ctx.fillStyle = this.skinColor;
+            ctx.beginPath(); ctx.arc(0, -16, 9, 0, Math.PI*2); ctx.fill();
+
+            // Hat Logic
+            if (this.hatType === 1) { 
+                ctx.fillStyle = this.teamColorDark; ctx.beginPath(); ctx.arc(0, -20, 9, Math.PI, 0); ctx.fill(); ctx.beginPath(); ctx.arc(0, -24, 3, 0, Math.PI*2); ctx.fill();
+            } else if (this.hatType === 2) { 
+                ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, -16, 9.5, Math.PI, 0); ctx.stroke();
+                ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(-9, -16, 4, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(9, -16, 4, 0, Math.PI*2); ctx.fill();
+            } else if (this.hatType === 3) {
+                 ctx.strokeStyle = this.teamColor; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -16, 10, 0, Math.PI*2); ctx.stroke();
+            }
+
+            // Eyes & Hands
+            const eyeOffX = Math.cos(this.facingAngle) * 3;
+            const eyeOffY = Math.sin(this.facingAngle) * 3;
+            ctx.fillStyle = '#000';
             ctx.beginPath(); ctx.arc(-2 + eyeOffX, -16 + eyeOffY, 1.5, 0, Math.PI*2); ctx.fill();
             ctx.beginPath(); ctx.arc(2 + eyeOffX, -16 + eyeOffY, 1.5, 0, Math.PI*2); ctx.fill();
-        }
 
-        const handDist = 10;
-        const hx = Math.cos(this.facingAngle) * handDist;
-        const hy = Math.sin(this.facingAngle) * handDist;
-        
-        if (this.hasBall) {
-            ctx.fillStyle = this.specialAmmo === 'grenade' ? '#ff5252' : '#FFF';
-            ctx.beginPath(); ctx.arc(hx, hy - 2, 5, 0, Math.PI*2); ctx.fill();
+            const hx = Math.cos(this.facingAngle) * 10;
+            const hy = Math.sin(this.facingAngle) * 10;
             
-            ctx.fillStyle = this.teamColorDark;
-            ctx.beginPath(); ctx.arc(hx - 3, hy, 3, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(hx + 3, hy, 3, 0, Math.PI*2); ctx.fill();
-            
-            if (STATE.chargeLevel > 0) {
-                ctx.strokeStyle = `rgba(255,255,255,${STATE.chargeLevel/CONFIG.chargeTime})`;
-                ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.arc(hx, hy-2, 7 + Math.random()*2, 0, Math.PI*2); ctx.stroke();
+            if (this.hasBall) {
+                ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(hx, hy - 2, 5, 0, Math.PI*2); ctx.fill();
+                if (this.chargeLevel > 0) {
+                    ctx.strokeStyle = `rgba(255,255,255,${this.chargeLevel/60})`;
+                    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, hy-2, 8, 0, Math.PI*2); ctx.stroke();
+                }
+            } else {
+                 ctx.fillStyle = this.teamColorDark; ctx.beginPath(); ctx.arc(-10, 0, 3, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(10, 0, 3, 0, Math.PI*2); ctx.fill();
             }
-        } else {
-            ctx.fillStyle = this.teamColorDark;
-            ctx.beginPath(); ctx.arc(-10, 0, 3, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(10, 0, 3, 0, Math.PI*2); ctx.fill();
         }
-
         ctx.restore();
-        
-        if (this.isHuman) {
+
+        // Self Indicator
+        if (this.id === STATE.id) {
             ctx.fillStyle = '#FFD700';
-            ctx.beginPath();
-            ctx.moveTo(drawX - 5, drawY - 45);
-            ctx.lineTo(drawX + 5, drawY - 45);
-            ctx.lineTo(drawX, drawY - 38);
-            ctx.fill();
+            ctx.beginPath(); ctx.moveTo(drawX - 5, drawY - 45); ctx.lineTo(drawX + 5, drawY - 45); ctx.lineTo(drawX, drawY - 38); ctx.fill();
         }
     }
 }
 
 class Particle {
-    constructor(x, y, color, size) {
-        this.x = x;
-        this.y = y;
-        this.color = color;
-        this.size = size;
-        const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 2;
-        this.vx = Math.cos(angle) * speed;
-        this.vy = Math.sin(angle) * speed;
+    constructor(x, y, color) {
+        this.x = x; this.y = y; this.color = color;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4;
         this.life = 1.0;
-        this.decay = 0.03 + Math.random() * 0.02;
     }
-    update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
-    }
-    draw(camX, camY) {
-        if (!isOnScreen(this.x, this.y, this.size, camX, camY)) return;
+    update() { this.x += this.vx; this.y += this.vy; this.life -= 0.05; }
+    draw(cx, cy) {
+        if (this.life <= 0) return;
         ctx.globalAlpha = this.life;
         ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x - camX, this.y - camY, this.size, 0, Math.PI*2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(this.x - cx, this.y - cy, 3, 0, Math.PI*2); ctx.fill();
         ctx.globalAlpha = 1;
     }
 }
 
 class Popup {
     constructor(x, y, text, color) {
-        this.x = x;
-        this.y = y;
-        this.text = text;
-        this.color = color;
-        this.life = 60;
-        this.vy = -1;
+        this.x = x; this.y = y; this.text = text; this.color = color;
+        this.life = 60; this.vy = -1;
     }
-    update() {
-        this.y += this.vy;
-        this.life--;
-    }
-    draw(camX, camY) {
+    update() { this.y += this.vy; this.life--; }
+    draw(cx, cy) {
         ctx.globalAlpha = Math.min(1, this.life / 20);
-        ctx.fillStyle = this.color;
-        ctx.font = 'bold 16px Arial';
-        ctx.shadowColor = 'black';
-        ctx.shadowBlur = 2;
-        ctx.fillText(this.text, this.x - camX, this.y - camY);
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = this.color; ctx.font = 'bold 16px Arial';
+        ctx.shadowColor = 'black'; ctx.shadowBlur = 2;
+        ctx.fillText(this.text, this.x - cx, this.y - cy);
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     }
-}
-
-function isOnScreen(x, y, radius, camX, camY) {
-    return (x + radius > camX && x - radius < camX + CONFIG.viewportWidth &&
-            y + radius > camY && y - radius < camY + CONFIG.viewportHeight);
 }
 
 function createParticles(x, y, color, count) {
-    // Limit particles for performance
-    if (STATE.particles.length > 300) STATE.particles.splice(0, count);
-    for(let i=0; i<count; i++) {
-        STATE.particles.push(new Particle(x, y, color, Math.random() * 3 + 1));
-    }
+    for(let i=0; i<count; i++) STATE.particles.push(new Particle(x, y, color));
 }
 
 function addPopup(x, y, text, color) {
     STATE.popups.push(new Popup(x, y, text, color));
 }
 
-function startGame(blueCount, redCount) {
-    Audio.init(); // Initialize Audio on first interaction
-    Audio.sfx.ui();
-    document.getElementById('overlay-screen').classList.add('hidden');
-    document.getElementById('controls-layer').classList.remove('hidden');
-    
-    // Determine Map Size
-    let widthMul = 1;
-    let heightMul = 1;
-    const totalPlayers = blueCount + redCount;
-    
-    if (CONFIG.mapSizePreference === 'small') {
-        widthMul = 1; heightMul = 1;
-    } else if (CONFIG.mapSizePreference === 'huge') {
-        widthMul = 3; heightMul = 2;
-    } else {
-        // Auto
-        if (totalPlayers <= 4) { widthMul = 1; heightMul = 1; }
-        else if (totalPlayers <= 20) { widthMul = 1.5; heightMul = 1.5; }
-        else { widthMul = 3; heightMul = 2.5; } // Massive map for 50v50
-    }
+/**
+ * --- SOCKET & NETWORK ---
+ */
+socket.on('connect', () => {
+    // Update UI to show "Ready"
+    const statusDiv = document.getElementById('connection-status');
+    const btn = document.getElementById('btn-play');
+    statusDiv.innerHTML = '<p class="text-green-500 font-bold">CONNECTED!</p>';
+    btn.disabled = false;
+    btn.classList.remove('bg-slate-300', 'opacity-50', 'cursor-not-allowed');
+    btn.classList.add('bg-blue-600', 'hover:bg-blue-500', 'cursor-pointer', 'transform', 'hover:scale-105');
+    btn.innerText = "JOIN BATTLE";
+});
 
-    // Force bigger map for 1v5 survival so exploration is possible
-    if(blueCount === 1 && redCount === 5 && CONFIG.mapSizePreference === 'auto') {
-        widthMul = 2; heightMul = 1.5; 
-    }
-    
-    CONFIG.worldWidth = CONFIG.viewportWidth * widthMul;
-    CONFIG.worldHeight = CONFIG.viewportHeight * heightMul;
-    
-    // Reset State
-    STATE.paused = false;
-    STATE.players = [];
-    STATE.snowballs = [];
-    STATE.particles = [];
-    STATE.obstacles = [];
-    STATE.popups = [];
-    STATE.footprints = [];
-    STATE.camera = {x: 0, y: 0};
-    STATE.cameraMode = 'LOCKED';
-    
-    // Create Map
-    const obsCount = Math.floor(15 * widthMul * heightMul);
-    for(let i=0; i<obsCount; i++) {
-        STATE.obstacles.push(new Obstacle(
-            Math.random() * CONFIG.worldWidth, 
-            Math.random() * CONFIG.worldHeight, 
-            Math.random() > 0.5 ? 'tree' : (Math.random() > 0.5 ? 'rock' : 'snowman')
-        ));
-    }
+socket.on('init', (data) => {
+    STATE.id = data.id;
+    STATE.worldWidth = data.width;
+    STATE.worldHeight = data.height;
+    STATE.obstacles = data.obstacles;
+});
 
-    // Create Players
-    for(let i=0; i<blueCount; i++) STATE.players.push(new Player(i, 'blue', i===0));
-    for(let i=0; i<redCount; i++) STATE.players.push(new Player(i+100, 'red', false));
-    
-    STATE.screen = 'playing';
-    updateScore();
-}
-
-function updateScore() {
-    const blueAlive = STATE.players.filter(p => p.team === 'blue' && !p.isFrozen).length;
-    const redAlive = STATE.players.filter(p => p.team === 'red' && !p.isFrozen).length;
-    document.getElementById('score-blue').innerText = blueAlive;
-    document.getElementById('score-red').innerText = redAlive;
-    
-    if (blueAlive === 0 || redAlive === 0) {
-        setTimeout(() => {
-            const title = document.getElementById('game-title');
-            title.innerText = blueAlive > 0 ? "BLUE VICTORY" : "RED VICTORY";
-            title.className = blueAlive > 0 ? "text-5xl font-black text-blue-500 mb-2" : "text-5xl font-black text-red-500 mb-2";
-            document.getElementById('overlay-screen').classList.remove('hidden');
-            document.getElementById('controls-layer').classList.add('hidden');
-            STATE.screen = 'menu';
-        }, 1500);
-    }
-}
-
-function updateStreakUI(streak, special) {
-    const display = document.getElementById('powerup-display');
-    const txt = document.getElementById('powerup-text');
-    const s1 = document.getElementById('star-1');
-    const s2 = document.getElementById('star-2');
-    const s3 = document.getElementById('star-3');
-
-    if (streak > 0) {
-        display.style.opacity = '1';
-        s1.className = streak >= 1 ? "text-xl text-yellow-400 drop-shadow-md scale-125" : "text-xl text-gray-400";
-        s2.className = streak >= 2 ? "text-xl text-yellow-400 drop-shadow-md scale-125" : "text-xl text-gray-400";
-        s3.className = streak >= 3 ? "text-xl text-yellow-400 drop-shadow-md scale-125" : "text-xl text-gray-400";
-        
-        if (special === 'grenade') {
-            txt.innerText = "GRENADE READY";
-            txt.className = "text-white font-black text-sm bg-red-600 px-4 py-1 rounded-full shadow-lg border border-white/30 animate-pulse";
-        } else {
-            txt.innerText = "KILL STREAK";
-            txt.className = "text-white font-black text-sm bg-slate-600 px-4 py-1 rounded-full shadow-lg border border-white/30";
+socket.on('state', (serverData) => {
+    // Sync Players
+    for (let id in serverData.players) {
+        const pData = serverData.players[id];
+        if (!STATE.players[id]) {
+            STATE.players[id] = new VisualPlayer(pData); // New
         }
-    } else {
-        display.style.opacity = '0';
+        STATE.players[id].update(pData); // Update
     }
+    // Remove disconnected
+    for (let id in STATE.players) {
+        if (!serverData.players[id]) delete STATE.players[id];
+    }
+    
+    STATE.snowballs = serverData.snowballs;
+
+    // Update Scores
+    const blues = Object.values(serverData.players).filter(p => p.team === 'blue' && !p.isFrozen).length;
+    const reds = Object.values(serverData.players).filter(p => p.team === 'red' && !p.isFrozen).length;
+    document.getElementById('score-blue').innerText = blues;
+    document.getElementById('score-red').innerText = reds;
+});
+
+// Effects triggered by server
+socket.on('effect', (data) => {
+    if (data.type === 'dash') {
+        createParticles(data.x, data.y, '#FFF', 5);
+        if (Math.hypot(STATE.camera.x - data.x, STATE.camera.y - data.y) < 800) Audio.sfx.dash();
+    }
+    else if (data.type === 'reload') {
+        addPopup(data.x, data.y - 20, "RELOAD", "#FFF");
+        if (data.id === STATE.id) Audio.sfx.collect();
+    }
+    else if (data.type === 'throw') {
+        if (Math.hypot(STATE.camera.x - data.x, STATE.camera.y - data.y) < 800) Audio.sfx.throw();
+    }
+});
+
+socket.on('hit', (data) => {
+    createParticles(data.x, data.y, '#FFF', 15);
+    Audio.sfx.hit();
+    if (STATE.players[data.id]) {
+        STATE.players[data.id].flashTimer = 10;
+        addPopup(data.x, data.y, "HIT!", "#FFFF00");
+    }
+    if (data.id === STATE.id) {
+        CONFIG.screenShake = 10;
+        addPopup(data.x, data.y, "FROZEN!", "#00FFFF");
+    }
+});
+
+/**
+ * --- GAME LOOP ---
+ */
+function joinGame() {
+    Audio.init();
+    Audio.sfx.ui();
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('ui-layer').classList.remove('hidden');
+    document.getElementById('controls-layer').classList.remove('hidden');
 }
 
 function gameLoop() {
     requestAnimationFrame(gameLoop);
     
-    if (STATE.paused) return; // Stop updates if paused
+    // --- SEND INPUT ---
+    if (STATE.id) {
+        socket.emit('input', {
+            moveX: STATE.inputs.moveX,
+            moveY: STATE.inputs.moveY,
+            dash: STATE.inputs.dash,
+            gather: STATE.inputs.gather,
+            throwStart: STATE.inputs.throwStart,
+            throwRelease: STATE.inputs.throwRelease,
+            angle: STATE.inputs.angle
+        });
+        
+        // Reset single-frame triggers
+        STATE.inputs.throwStart = false;
+        STATE.inputs.throwRelease = false;
+        STATE.inputs.dash = false;
+        STATE.inputs.gather = false;
+    }
 
-    STATE.frameCount++;
-    
-    // Shake Logic
+    // --- CAMERA ---
     let shakeX = 0, shakeY = 0;
     if (CONFIG.screenShake > 0) {
-        shakeX = (Math.random() - 0.5) * CONFIG.screenShake * 4;
-        shakeY = (Math.random() - 0.5) * CONFIG.screenShake * 4;
+        shakeX = (Math.random() - 0.5) * CONFIG.screenShake;
+        shakeY = (Math.random() - 0.5) * CONFIG.screenShake;
         CONFIG.screenShake *= 0.9;
-        if (CONFIG.screenShake < 0.1) CONFIG.screenShake = 0;
     }
 
-    const player = STATE.players.find(p => p.isHuman);
-    
-    // --- CAMERA LOGIC ---
-    if (player && STATE.cameraMode === 'LOCKED') {
-        // Mode 1: Follow Player
-        let targetCamX = player.x - CONFIG.viewportWidth / 2;
-        let targetCamY = player.y - CONFIG.viewportHeight / 2;
-        
-        // Clamp to world
-        targetCamX = Math.max(0, Math.min(targetCamX, CONFIG.worldWidth - CONFIG.viewportWidth));
-        targetCamY = Math.max(0, Math.min(targetCamY, CONFIG.worldHeight - CONFIG.viewportHeight));
-        
-        STATE.camera.x += (targetCamX - STATE.camera.x) * CONFIG.cameraLerp;
-        STATE.camera.y += (targetCamY - STATE.camera.y) * CONFIG.cameraLerp;
+    const myPlayer = STATE.players[STATE.id];
+    if (myPlayer) {
+        let tx = myPlayer.x - CONFIG.viewportWidth / 2;
+        let ty = myPlayer.y - CONFIG.viewportHeight / 2;
+        tx = Math.max(0, Math.min(tx, STATE.worldWidth - CONFIG.viewportWidth));
+        ty = Math.max(0, Math.min(ty, STATE.worldHeight - CONFIG.viewportHeight));
+        STATE.camera.x += (tx - STATE.camera.x) * CONFIG.cameraLerp;
+        STATE.camera.y += (ty - STATE.camera.y) * CONFIG.cameraLerp;
     }
-    // Mode 2: Free Mode - Camera stays put (modified by drag handlers directly) but we clamp it
-    if (STATE.cameraMode === 'FREE') {
-        STATE.camera.x = Math.max(0, Math.min(STATE.camera.x, CONFIG.worldWidth - CONFIG.viewportWidth));
-        STATE.camera.y = Math.max(0, Math.min(STATE.camera.y, CONFIG.worldHeight - CONFIG.viewportHeight));
-    }
-    
+
     const cx = STATE.camera.x + shakeX;
     const cy = STATE.camera.y + shakeY;
 
+    // --- RENDER ---
     ctx.clearRect(0, 0, CONFIG.viewportWidth, CONFIG.viewportHeight);
-    
-    // Background Grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
+
+    // Grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.beginPath();
     const gridSize = 100;
-    const offX = -cx % gridSize;
-    const offY = -cy % gridSize;
+    const offX = -cx % gridSize; const offY = -cy % gridSize;
     for(let x=offX; x<CONFIG.viewportWidth; x+=gridSize) { ctx.moveTo(x, 0); ctx.lineTo(x, CONFIG.viewportHeight); }
     for(let y=offY; y<CONFIG.viewportHeight; y+=gridSize) { ctx.moveTo(0, y); ctx.lineTo(CONFIG.viewportWidth, y); }
     ctx.stroke();
-    
-    // World Borders (Red Line)
-    ctx.strokeStyle = '#FF0000';
-    ctx.lineWidth = 5;
-    ctx.strokeRect(0 - cx, 0 - cy, CONFIG.worldWidth, CONFIG.worldHeight);
 
-    // Heat Source (Center of World)
-    const hx = (CONFIG.worldWidth/2) - cx;
-    const hy = (CONFIG.worldHeight/2) - cy;
-    
-    // Only draw heat if visible
-    if (hx > -200 && hx < CONFIG.viewportWidth + 200 && hy > -200 && hy < CONFIG.viewportHeight + 200) {
-        const pulse = 150 + Math.sin(STATE.frameCount * 0.05) * 10;
-        const grad = ctx.createRadialGradient(hx, hy, 20, hx, hy, pulse);
-        grad.addColorStop(0, 'rgba(255, 100, 50, 0.3)');
-        grad.addColorStop(1, 'rgba(255, 100, 50, 0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(hx - pulse, hy - pulse, pulse*2, pulse*2);
+    // Border
+    ctx.strokeStyle = '#FF0000'; ctx.lineWidth = 5;
+    ctx.strokeRect(0 - cx, 0 - cy, STATE.worldWidth, STATE.worldHeight);
+
+    // Footprints
+    for(let i=STATE.footprints.length-1; i>=0; i--) {
+        const fp = STATE.footprints[i];
+        fp.life--;
+        if(fp.life <= 0) { STATE.footprints.splice(i,1); continue; }
+        if (fp.x < cx || fp.x > cx+CONFIG.viewportWidth) continue;
+        ctx.save(); ctx.translate(fp.x - cx, fp.y - cy); ctx.rotate(fp.angle);
+        ctx.fillStyle = `rgba(255,255,255,${fp.life/200})`;
+        ctx.beginPath(); ctx.ellipse(0, -3, 3, 2, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(0, 3, 3, 2, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
     }
 
-    if (STATE.screen === 'playing') {
+    // Objects
+    STATE.obstacles.forEach(obs => {
+        if (obs.x + obs.radius < cx || obs.x - obs.radius > cx + CONFIG.viewportWidth) return;
+        const dx = obs.x - cx; const dy = obs.y - cy;
+        ctx.fillStyle = 'rgba(0,0,30,0.15)'; ctx.beginPath(); ctx.ellipse(dx, dy + obs.radius/2, obs.radius, obs.radius*0.4, 0, 0, Math.PI*2); ctx.fill();
         
-        // Footprints
-        for(let i=STATE.footprints.length-1; i>=0; i--) {
-            const fp = STATE.footprints[i];
-            fp.life--;
-            if(fp.life <= 0) { STATE.footprints.splice(i,1); continue; }
-            if(!isOnScreen(fp.x, fp.y, 5, cx, cy)) continue;
-
-            ctx.save();
-            ctx.translate(fp.x - cx, fp.y - cy);
-            ctx.rotate(fp.angle);
-            ctx.fillStyle = `rgba(255,255,255,${fp.life/600})`;
-            ctx.beginPath(); ctx.ellipse(0, -3, 3, 2, 0, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.ellipse(0, 3, 3, 2, 0, 0, Math.PI*2); ctx.fill();
-            ctx.restore();
+        if (obs.type === 'tree') {
+            ctx.fillStyle = '#1e4620'; ctx.beginPath(); ctx.moveTo(dx, dy-55); ctx.lineTo(dx+25, dy+10); ctx.lineTo(dx-25, dy+10); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(dx, dy-55); ctx.lineTo(dx+8, dy-40); ctx.lineTo(dx-8, dy-40); ctx.fill();
+        } else if (obs.type === 'snowman') {
+            ctx.fillStyle = '#f0f9ff'; ctx.beginPath(); ctx.arc(dx, dy, 16, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(dx, dy-20, 12, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(dx, dy-22, 2, 0, Math.PI*2); ctx.fill();
+        } else {
+             ctx.fillStyle = '#78909c'; ctx.beginPath(); ctx.arc(dx, dy, 20, 0, Math.PI*2); ctx.fill();
         }
+    });
 
-        const entities = [...STATE.players, ...STATE.obstacles, ...STATE.snowballs];
-        entities.sort((a,b) => a.y - b.y);
+    // Players
+    const renderList = Object.values(STATE.players).sort((a,b) => a.y - b.y);
+    renderList.forEach(p => p.draw(cx, cy));
 
-        entities.forEach(ent => {
-            if (ent instanceof Player) ent.update();
-            else if (ent instanceof Snowball) ent.update();
-            ent.draw(cx, cy);
-        });
+    // Snowballs
+    STATE.snowballs.forEach(b => {
+        const dx = b.x - cx; const dy = b.y - cy - b.z;
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(b.x - cx, b.y - cy, b.radius, 0, Math.PI*2); ctx.fill(); 
+        ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(dx, dy, b.radius, 0, Math.PI*2); ctx.fill();
+    });
 
-        // Collision: Ball vs Entity
-        STATE.snowballs.forEach(ball => {
-            if (!ball.active) return;
-            
-            for(let obs of STATE.obstacles) {
-                if (obs.health > 0 && Math.hypot(ball.x - obs.x, ball.y - obs.y) < obs.radius + ball.radius) {
-                    ball.active = false;
-                    obs.hit(1);
-                    Audio.sfx.hit();
-                    if (ball.isGrenade) {
-                        createParticles(ball.x, ball.y, '#FF5252', 20); 
-                        Audio.sfx.grenade();
-                    }
-                    return;
-                }
-            }
-
-            for(let p of STATE.players) {
-                if (p.id === ball.ownerId || p.isFrozen) continue;
-                if (Math.hypot(ball.x - p.x, ball.y - p.y) < p.radius + ball.radius) {
-                    ball.active = false;
-                    Audio.sfx.hit();
-                    
-                    if (ball.isGrenade) {
-                        createParticles(ball.x, ball.y, '#FF5252', 30);
-                        CONFIG.screenShake = 5;
-                        p.isFrozen = true;
-                        p.streak = 0;
-                        p.flashTimer = 5;
-                        Audio.sfx.grenade();
-                        if (p.isHuman) addPopup(p.x, p.y, "BLASTED!", "#FF0000");
-                    } else if (p.team !== ball.team) {
-                        p.isFrozen = true;
-                        p.streak = 0;
-                        p.charge = 0;
-                        p.flashTimer = 5;
-                        createParticles(p.x, p.y, p.color, 15);
-                        
-                        const owner = STATE.players.find(o => o.id === ball.ownerId);
-                        if (owner) {
-                            owner.streak++;
-                            if (owner.streak >= 3) owner.specialAmmo = 'grenade';
-                            if (owner.isHuman) {
-                                addPopup(p.x, p.y, "HIT!", "#FFFF00");
-                                updateStreakUI(owner.streak, owner.specialAmmo);
-                            }
-                        }
-                    }
-                    updateScore();
-                    break;
-                }
-            }
-        });
-
-        STATE.snowballs = STATE.snowballs.filter(b => b.active);
-        
-        STATE.particles.forEach(p => { p.update(); p.draw(cx, cy); });
-        STATE.particles = STATE.particles.filter(p => p.life > 0);
-        
-        STATE.popups.forEach(p => { p.update(); p.draw(cx, cy); });
-        STATE.popups = STATE.popups.filter(p => p.life > 0);
-    }
+    // Particles/Popups
+    STATE.particles.forEach((p, i) => { p.update(); p.draw(cx, cy); if(p.life<=0) STATE.particles.splice(i,1); });
+    STATE.popups.forEach((p, i) => { p.update(); p.draw(cx, cy); if(p.life<=0) STATE.popups.splice(i,1); });
 }
 
-function resize() {
-    CONFIG.viewportWidth = window.innerWidth;
-    CONFIG.viewportHeight = window.innerHeight;
-    canvas.width = CONFIG.viewportWidth;
-    canvas.height = CONFIG.viewportHeight;
-}
+/**
+ * --- INPUTS ---
+ */
+function resize() { CONFIG.viewportWidth = window.innerWidth; CONFIG.viewportHeight = window.innerHeight; canvas.width = CONFIG.viewportWidth; canvas.height = CONFIG.viewportHeight; }
 window.addEventListener('resize', resize);
 resize();
 
-// Input
-const joystickZone = document.getElementById('joystick-zone');
-const joystickKnob = document.getElementById('joystick-knob');
-const touchLayer = document.getElementById('touch-layer');
+// Joystick
+const joyZone = document.getElementById('joystick-zone');
+const joyKnob = document.getElementById('joystick-knob');
+let joyActive = false;
+let joyOrigin = {x:0, y:0};
 
-const handleJoystick = (e, isEnd) => {
-    e.preventDefault();
-    e.stopPropagation(); // Stop propagation to prevent panning
-    if (isEnd) {
-        STATE.joystick.active = false;
-        joystickKnob.style.transform = `translate(-50%, -50%)`;
-        STATE.inputs.moveX = 0;
-        STATE.inputs.moveY = 0;
-        return;
-    }
-    const touch = e.changedTouches[0];
-    if (!STATE.joystick.active) {
-        const rect = joystickZone.getBoundingClientRect();
-        STATE.joystick.originX = rect.left + rect.width/2;
-        STATE.joystick.originY = rect.top + rect.height/2;
-        STATE.joystick.active = true;
-    }
-    
-    // Scale compensation for input distance
-    const scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--btn-scale')) || 1;
-    const maxDist = 35 * scale;
-    
-    let dx = touch.clientX - STATE.joystick.originX;
-    let dy = touch.clientY - STATE.joystick.originY;
-    const dist = Math.hypot(dx, dy);
-    
-    if (dist > maxDist) {
-        dx = (dx / dist) * maxDist;
-        dy = (dy / dist) * maxDist;
-    }
-    
-    // Reverse scale for transform so knob stays within visual bounds properly
-    joystickKnob.style.transform = `translate(calc(-50% + ${dx/scale}px), calc(-50% + ${dy/scale}px))`;
-    STATE.inputs.moveX = dx / maxDist;
-    STATE.inputs.moveY = dy / maxDist;
-};
-
-// --- FREE CAMERA HANDLERS ---
-const handlePanStart = (e) => {
-    // Only drag if not touching a control
-    if(STATE.screen !== 'playing') return;
-    STATE.isDragging = true;
+const handleJoy = (e, isEnd) => {
+    if(isEnd) { joyActive = false; joyKnob.style.transform = `translate(-50%, -50%)`; STATE.inputs.moveX=0; STATE.inputs.moveY=0; return; }
     const t = e.changedTouches ? e.changedTouches[0] : e;
-    STATE.dragStart.x = t.clientX;
-    STATE.dragStart.y = t.clientY;
-    
-    // Switch to Free Mode immediately
-    if (STATE.cameraMode === 'LOCKED') {
-        STATE.cameraMode = 'FREE';
-        // Show recenter button
-        const btn = document.getElementById('btn-recenter');
-        btn.classList.remove('hidden');
-        // Small delay to allow display:block to apply before opacity transition
-        setTimeout(() => btn.classList.remove('opacity-0'), 10);
-        setTimeout(() => btn.classList.add('opacity-100'), 10);
+    if (!joyActive) {
+        const rect = joyZone.getBoundingClientRect();
+        joyOrigin = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+        joyActive = true;
     }
+    let dx = t.clientX - joyOrigin.x; let dy = t.clientY - joyOrigin.y;
+    const dist = Math.hypot(dx, dy); const max = 35;
+    if (dist > max) { dx = (dx/dist)*max; dy = (dy/dist)*max; }
+    joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    STATE.inputs.moveX = dx/max; STATE.inputs.moveY = dy/max;
+    // Update Angle based on movement
+    if (dist > 5) STATE.inputs.angle = Math.atan2(STATE.inputs.moveY, STATE.inputs.moveX);
 };
+joyZone.addEventListener('touchstart', (e)=>{e.preventDefault(); handleJoy(e, false)});
+joyZone.addEventListener('touchmove', (e)=>{e.preventDefault(); handleJoy(e, false)});
+joyZone.addEventListener('touchend', (e)=>{e.preventDefault(); handleJoy(e, true)});
 
-const handlePanMove = (e) => {
-    if (!STATE.isDragging) return;
-    const t = e.changedTouches ? e.changedTouches[0] : e;
-    const dx = t.clientX - STATE.dragStart.x;
-    const dy = t.clientY - STATE.dragStart.y;
-    
-    // Move camera inverse to drag
-    STATE.camera.x -= dx;
-    STATE.camera.y -= dy;
-    
-    STATE.dragStart.x = t.clientX;
-    STATE.dragStart.y = t.clientY;
-};
-
-const handlePanEnd = () => {
-    STATE.isDragging = false;
-};
-
-// Attach Pan Handlers to the background layer
-touchLayer.addEventListener('mousedown', handlePanStart);
-window.addEventListener('mousemove', handlePanMove);
-window.addEventListener('mouseup', handlePanEnd);
-touchLayer.addEventListener('touchstart', handlePanStart, {passive: false});
-touchLayer.addEventListener('touchmove', handlePanMove, {passive: false});
-touchLayer.addEventListener('touchend', handlePanEnd);
-
-// Joystick Handlers
-joystickZone.addEventListener('touchstart', (e) => handleJoystick(e, false), {passive: false});
-joystickZone.addEventListener('touchmove', (e) => handleJoystick(e, false), {passive: false});
-joystickZone.addEventListener('touchend', (e) => handleJoystick(e, true));
-
-const btnThrow = document.getElementById('btn-throw');
+// Buttons
 const btnDash = document.getElementById('btn-dash');
+const btnThrow = document.getElementById('btn-throw');
 const btnGather = document.getElementById('btn-gather');
 
-const addTouch = (el, key) => {
-    el.addEventListener('touchstart', (e) => { 
-        e.preventDefault(); 
-        e.stopPropagation(); // Stop panning
-        STATE.inputs[key] = true; 
-        el.classList.add('active');
-    });
-    el.addEventListener('touchend', (e) => { 
-        e.preventDefault(); 
-        STATE.inputs[key] = false; 
-        el.classList.remove('active');
-    });
-};
+btnDash.addEventListener('touchstart', (e)=>{e.preventDefault(); STATE.inputs.dash = true;});
+btnThrow.addEventListener('touchstart', (e)=>{e.preventDefault(); STATE.inputs.throwStart = true;});
+btnThrow.addEventListener('touchend', (e)=>{e.preventDefault(); STATE.inputs.throwRelease = true;});
+btnGather.addEventListener('touchstart', (e)=>{e.preventDefault(); STATE.inputs.gather = true;});
+btnGather.addEventListener('touchend', (e)=>{e.preventDefault(); STATE.inputs.gather = false;});
 
-addTouch(btnThrow, 'throw');
-addTouch(btnDash, 'dash');
-addTouch(btnGather, 'gather');
-
-window.addEventListener('keydown', (e) => {
-    if(e.key.toLowerCase() === 'w') STATE.keys.w = true;
-    if(e.key.toLowerCase() === 'a') STATE.keys.a = true;
-    if(e.key.toLowerCase() === 's') STATE.keys.s = true;
-    if(e.key.toLowerCase() === 'd') STATE.keys.d = true;
-    if(e.key === ' ') STATE.inputs.throw = true;
-    if(e.key === 'Shift') STATE.inputs.gather = true; 
-    updateKeys();
+// Keyboard
+window.addEventListener('keydown', (e)=>{
+    const k = e.key.toLowerCase();
+    if(k==='w') STATE.inputs.moveY = -1;
+    if(k==='s') STATE.inputs.moveY = 1;
+    if(k==='a') STATE.inputs.moveX = -1;
+    if(k==='d') STATE.inputs.moveX = 1;
+    if(k===' ') STATE.inputs.dash = true;
+    if(k==='f') STATE.inputs.throwStart = true;
+    if(k==='g') STATE.inputs.gather = true;
 });
-window.addEventListener('keyup', (e) => {
-    if(e.key.toLowerCase() === 'w') STATE.keys.w = false;
-    if(e.key.toLowerCase() === 'a') STATE.keys.a = false;
-    if(e.key.toLowerCase() === 's') STATE.keys.s = false;
-    if(e.key.toLowerCase() === 'd') STATE.keys.d = false;
-    if(e.key === ' ') STATE.inputs.throw = false;
-    if(e.key === 'Shift') STATE.inputs.gather = false;
-    updateKeys();
+window.addEventListener('keyup', (e)=>{
+    const k = e.key.toLowerCase();
+    if(k==='w'||k==='s') STATE.inputs.moveY = 0;
+    if(k==='a'||k==='d') STATE.inputs.moveX = 0;
+    if(k===' ') STATE.inputs.dash = false;
+    if(k==='f') STATE.inputs.throwRelease = true;
+    if(k==='g') STATE.inputs.gather = false;
 });
 
-function updateKeys() {
-    STATE.inputs.moveX = (STATE.keys.d ? 1 : 0) - (STATE.keys.a ? 1 : 0);
-    STATE.inputs.moveY = (STATE.keys.s ? 1 : 0) - (STATE.keys.w ? 1 : 0);
-}
+// Mouse Aim
+window.addEventListener('mousemove', (e) => {
+    const p = STATE.players[STATE.id];
+    if(p) STATE.inputs.angle = Math.atan2(e.clientY - (p.y - STATE.camera.y), e.clientX - (p.x - STATE.camera.x));
+});
+window.addEventListener('mousedown', (e) => {
+    if (e.button === 0) STATE.inputs.throwStart = true;
+    if (e.button === 2) STATE.inputs.gather = true;
+});
+window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) STATE.inputs.throwRelease = true;
+    if (e.button === 2) STATE.inputs.gather = false;
+});
+window.addEventListener('contextmenu', e=>e.preventDefault());
 
 gameLoop();
-
 </script>
 </body>
 </html>
-
-
