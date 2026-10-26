@@ -34,6 +34,26 @@ function sizeAllowed(mode, blue, red) {
     return false;
 }
 
+// --- BOT DIFFICULTY LEVELS (single-player only) ---
+// Normal reproduces the original bot exactly. Easy/Hard tune aim noise,
+// charge time, throw range, dash frequency, and top speed.
+const DIFFICULTY = {
+    easy:   { aimNoise: 0.5,  chargeAt: 40, throwRange: 450, dashProb: 0.002, speedMul: 0.85 },
+    normal: { aimNoise: 0.2,  chargeAt: 25, throwRange: 550, dashProb: 0.005, speedMul: 1 },
+    hard:   { aimNoise: 0.08, chargeAt: 15, throwRange: 650, dashProb: 0.01,  speedMul: 1.1 }
+};
+// Extra hit radius (px) for a human's throws in single-player: hitting
+// bots is slightly more forgiving. Bot throws and all multiplayer
+// throws use the original radius.
+const SINGLE_HIT_BONUS = 6;
+
+function difficultyValid(d) {
+    return (d === 'easy' || d === 'normal' || d === 'hard') ? d : 'normal';
+}
+function difficultyOf(match) {
+    return DIFFICULTY[match.difficulty] || DIFFICULTY.normal;
+}
+
 // --- MATCH MODEL ---
 const matches = new Map(); // id -> match
 let matchCounter = 0;
@@ -54,13 +74,14 @@ function makeObstacles() {
     return obstacles;
 }
 
-function createMatch(mode, blueCap, redCap) {
+function createMatch(mode, blueCap, redCap, difficulty) {
     const id = `match-${Date.now().toString(36)}-${++matchCounter}`;
     const match = {
         id,
         mode,
         blueCap,
         redCap,
+        difficulty: difficulty || 'normal',
         players: {},
         snowballs: [],
         obstacles: makeObstacles(),
@@ -168,11 +189,12 @@ class ServerPlayer {
             this.vx *= CONFIG.friction;
             this.vy *= CONFIG.friction;
 
-            // Cap Speed
+            // Cap Speed (bots scale by difficulty; humans use CONFIG.maxSpeed).
             const speed = Math.hypot(this.vx, this.vy);
-            if (speed > CONFIG.maxSpeed) {
-                this.vx = (this.vx / speed) * CONFIG.maxSpeed;
-                this.vy = (this.vy / speed) * CONFIG.maxSpeed;
+            const cap = this.isBot ? CONFIG.maxSpeed * difficultyOf(match).speedMul : CONFIG.maxSpeed;
+            if (speed > cap) {
+                this.vx = (this.vx / speed) * cap;
+                this.vy = (this.vy / speed) * cap;
             }
         }
 
@@ -212,7 +234,9 @@ class ServerSnowball {
         this.vx = Math.cos(angle) * speed;
         this.vy = Math.sin(angle) * speed;
         this.z = 14;
-        this.vz = 2;
+        this.vz = 3.1; // Higher lob than the original 2.0; paired with the
+                       // stronger gravity below, the peak rises to ~36px
+                       // (was ~28px) with the same ~0.55s flight time.
         this.ownerId = ownerId;
         this.team = team;
         this.active = true;
@@ -223,7 +247,7 @@ class ServerSnowball {
         this.x += this.vx;
         this.y += this.vy;
         this.z += this.vz;
-        this.vz -= 0.15; // Gravity
+        this.vz -= 0.22; // Gravity (was 0.15; raised to keep flight time flat)
 
         if (this.z < 0) this.active = false; // Hit ground
 
@@ -235,8 +259,10 @@ class ServerSnowball {
 
 // --- BOT AI ---
 // Runs once per tick per bot, before player updates. Reuses the same physics
-// and charge/release mechanics as human players.
+// and charge/release mechanics as human players. Behavior scales with the
+// match's difficulty (normal reproduces the original bot exactly).
 function computeBotInput(bot, match) {
+    const diff = difficultyOf(match);
     if (bot.isFrozen) {
         bot.inputs.moveX = 0; bot.inputs.moveY = 0;
         bot.inputs.dash = false; bot.inputs.gather = false;
@@ -272,10 +298,10 @@ function computeBotInput(bot, match) {
     }
 
     bot.inputs.gather = false;
-    bot.inputs.angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.2; // small aim noise
-    if (dist <= 550) {
+    bot.inputs.angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * diff.aimNoise;
+    if (dist <= diff.throwRange) {
         // In range: hold still and charge. Release is handled in tickMatch
-        // once chargeLevel reaches ~25 ticks.
+        // once chargeLevel reaches the difficulty's chargeAt ticks.
         bot.inputs.moveX = 0; bot.inputs.moveY = 0;
         if (bot.chargeLevel === 0) bot.chargeLevel = 1;
         bot.inputs.dash = false;
@@ -283,18 +309,18 @@ function computeBotInput(bot, match) {
         // Out of range: chase, and cancel any partial charge.
         bot.inputs.moveX = nx; bot.inputs.moveY = ny;
         bot.chargeLevel = 0;
-        bot.inputs.dash = Math.random() < 0.005; // occasional dash while moving
+        bot.inputs.dash = Math.random() < diff.dashProb; // occasional dash while moving
     }
 }
 
 // --- MATCH TICK ---
 function tickMatch(match) {
-    // 1. Bot AI + bot throw releases (charge >= ~25 ticks).
+    // 1. Bot AI + bot throw releases (charge reaches difficulty's chargeAt).
     for (const id in match.players) {
         const p = match.players[id];
         if (!p.isBot) continue;
         computeBotInput(p, match);
-        if (p.hasBall && !p.isFrozen && p.chargeLevel >= 25) {
+        if (p.hasBall && !p.isFrozen && p.chargeLevel >= difficultyOf(match).chargeAt) {
             const speed = CONFIG.ballSpeed + (p.chargeLevel / 5);
             match.snowballs.push(new ServerSnowball(
                 p.x, p.y, p.inputs.angle, speed, p.id, p.team, p.chargeLevel
@@ -322,7 +348,12 @@ function tickMatch(match) {
             if (ball.ownerId === p.id || ball.team === p.team || p.isFrozen) continue;
 
             const dist = Math.hypot(ball.x - p.x, ball.y - p.y);
-            if (dist < p.radius + ball.radius) {
+            // Single-player: a human's throws get a slightly bigger hit
+            // area (easier to hit bots). Bot throws and all multiplayer
+            // throws use the original radius.
+            const owner = match.players[ball.ownerId];
+            const bonus = (match.mode === 'single' && owner && !owner.isBot) ? SINGLE_HIT_BONUS : 0;
+            if (dist < p.radius + ball.radius + bonus) {
                 ball.active = false;
                 p.isFrozen = true;
                 match.emit('hit', { x: p.x, y: p.y, id: p.id });
@@ -388,6 +419,9 @@ io.on('connection', (socket) => {
         const mode = data && data.mode;
         const blue = Number(data && data.blue);
         const red = Number(data && data.red);
+        // Bot difficulty: single-player only; anything else defaults to
+        // normal (multiplayer has no bots, so it is ignored there).
+        const difficulty = difficultyValid(data && data.difficulty);
 
         if ((mode !== 'single' && mode !== 'multi') || !sizeAllowed(mode, blue, red)) {
             socket.emit('joinError', { message: 'Invalid mode or match size.' });
@@ -400,7 +434,7 @@ io.on('connection', (socket) => {
         let match;
         if (mode === 'single') {
             // Human on blue; bots fill every remaining slot on both teams.
-            match = createMatch('single', blue, red);
+            match = createMatch('single', blue, red, difficulty);
             match.players[socket.id] = new ServerPlayer(socket.id, 'blue', false);
             for (let i = 0; i < blue - 1; i++) addBot(match, 'blue');
             for (let i = 0; i < red; i++) addBot(match, 'red');
@@ -427,7 +461,7 @@ io.on('connection', (socket) => {
 
         socket.join(match.id);
         socket.data.matchId = match.id;
-        console.log(`Player ${socket.id} joined ${match.id} (${mode} ${blue}v${red})`);
+        console.log(`Player ${socket.id} joined ${match.id} (${mode} ${blue}v${red} ${match.difficulty})`);
 
         // Send Init Data (after join, not on connect).
         socket.emit('init', {
@@ -436,7 +470,7 @@ io.on('connection', (socket) => {
             height: CONFIG.worldHeight,
             obstacles: match.obstacles,
             team: match.players[socket.id].team,
-            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap }
+            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty }
         });
     });
 
