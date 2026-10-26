@@ -78,6 +78,18 @@
         </div>
     </div>
 
+    <!-- Results overlay: shown on matchEnd (3-minute matches). -->
+    <div id="results-overlay" class="hidden absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
+        <div class="bg-white/95 p-8 rounded-3xl shadow-2xl text-center max-w-lg w-full mx-4 border border-white/50 animate-pop">
+            <h2 id="results-title" class="text-5xl font-black mb-2 text-slate-700">DRAW</h2>
+            <p id="results-score" class="text-slate-500 font-bold mb-6 tracking-widest text-sm">Blue 0 – 0 Red</p>
+            <div class="flex gap-2">
+                <button onclick="rematch()" class="flex-1 py-3 rounded-xl font-black bg-blue-600 text-white">REMATCH</button>
+                <button onclick="location.reload()" class="flex-1 py-3 rounded-xl font-black bg-slate-200 text-slate-700">MENU</button>
+            </div>
+        </div>
+    </div>
+
     <!-- UI Overlay -->
     <div id="ui-layer" class="hidden absolute inset-0 pointer-events-none flex flex-col justify-between p-4 overflow-hidden z-40">
         <div class="flex justify-between items-start w-full pointer-events-auto">
@@ -393,16 +405,21 @@ socket.on('connect', () => {
 
 socket.on('init', (data) => {
     STATE.id = data.id;
+    STATE.team = data.team;
     STATE.worldWidth = data.width;
     STATE.worldHeight = data.height;
     STATE.obstacles = data.obstacles;
+    // A fresh match hides any previous results overlay (rematch path).
+    document.getElementById('results-overlay').classList.add('hidden');
     // Match badge (e.g. "Single • 5v5" / "Single • 5v5 • Hard" / "Multi • 10v10").
     // Difficulty shows only for non-normal single-player (normal is the default).
+    // The base label is kept so the state handler can append clock + score.
     if (data.match) {
         const label = data.match.mode === 'single' ? 'Single' : 'Multi';
         const diff = (data.match.mode === 'single' && data.match.difficulty && data.match.difficulty !== 'normal')
             ? ` • ${data.match.difficulty[0].toUpperCase()}${data.match.difficulty.slice(1)}` : '';
-        document.getElementById('match-badge').innerText = `${label} • ${data.match.blueCap}v${data.match.redCap}${diff}`;
+        STATE.badgeBase = `${label} • ${data.match.blueCap}v${data.match.redCap}${diff}`;
+        document.getElementById('match-badge').innerText = STATE.badgeBase;
     }
     // Join accepted: enter the game.
     document.getElementById('start-screen').classList.add('hidden');
@@ -434,6 +451,15 @@ socket.on('state', (serverData) => {
     const reds = Object.values(serverData.players).filter(p => p.team === 'red' && !p.isFrozen).length;
     document.getElementById('score-blue').innerText = blues;
     document.getElementById('score-red').innerText = reds;
+    // Match clock + freeze score in the badge (e.g. "Single • 5v5 • 2:31 • 5–3").
+    if (serverData.match && STATE.badgeBase) {
+        const m = serverData.match;
+        const clock = m.timeLeft === null ? '--:--'
+            : `${Math.floor(m.timeLeft / 60)}:${String(m.timeLeft % 60).padStart(2, '0')}`;
+        const text = `${STATE.badgeBase} • ${clock} • ${m.score.blue}–${m.score.red}`;
+        const badge = document.getElementById('match-badge');
+        if (badge.innerText !== text) badge.innerText = text;
+    }
 });
 
 socket.on('effect', (data) => {
@@ -461,6 +487,25 @@ socket.on('hit', (data) => {
         CONFIG.screenShake = 10;
         addPopup(data.x, data.y, "FROZEN!", "#00FFFF");
     }
+});
+
+// Match end (3-minute timer): show the results overlay. VICTORY when the
+// player's own team scored more freezes, DEFEAT when it scored fewer.
+socket.on('matchEnd', (data) => {
+    const title = document.getElementById('results-title');
+    if (data.winner === 'draw') {
+        title.innerText = 'DRAW';
+        title.className = 'text-5xl font-black mb-2 text-slate-700';
+    } else if (data.winner === STATE.team) {
+        title.innerText = 'VICTORY!';
+        title.className = 'text-5xl font-black mb-2 text-blue-600';
+    } else {
+        title.innerText = 'DEFEAT';
+        title.className = 'text-5xl font-black mb-2 text-red-600';
+    }
+    document.getElementById('results-score').innerText =
+        `Blue ${data.score.blue} – ${data.score.red} Red`;
+    document.getElementById('results-overlay').classList.remove('hidden');
 });
 
 /**
@@ -502,6 +547,13 @@ function selectDifficulty(difficulty) {
 /**
  * --- GAME LOOP ---
  */
+// Rematch after a match ends: re-join with the same menu settings. The
+// server moves the client to a fresh match; init hides the overlay again.
+function rematch() {
+    document.getElementById('results-overlay').classList.add('hidden');
+    joinGame();
+}
+
 function joinGame() {
     Audio.init();
     Audio.sfx.ui();

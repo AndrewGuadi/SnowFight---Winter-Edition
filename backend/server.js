@@ -34,6 +34,10 @@ function sizeAllowed(mode, blue, red) {
     return false;
 }
 
+// --- MATCH LENGTH ---
+// 3 minutes at 60 TPS. Overridable via env for tests.
+const MATCH_DURATION_TICKS = Number(process.env.MATCH_DURATION_TICKS) || 10800;
+
 // --- BOT DIFFICULTY LEVELS (single-player only) ---
 // Normal reproduces the original bot exactly. Easy/Hard tune aim noise,
 // charge time, throw range, dash frequency, and top speed.
@@ -82,6 +86,14 @@ function createMatch(mode, blueCap, redCap, difficulty) {
         blueCap,
         redCap,
         difficulty: difficulty || 'normal',
+        // Timed-match state: the clock starts once at least 2 players are
+        // present; at 3 minutes the match ends and a winner is declared
+        // from the freeze score (most freezes inflicted; tie = draw).
+        score: { blue: 0, red: 0 },
+        timerStarted: false,
+        timerTicks: 0,
+        ended: false,
+        winner: null,
         players: {},
         snowballs: [],
         obstacles: makeObstacles(),
@@ -105,6 +117,7 @@ function hasHumans(match) {
 function findMultiMatch(blueCap, redCap) {
     for (const match of matches.values()) {
         if (match.mode !== 'multi') continue;
+        if (match.ended) continue;
         if (match.blueCap !== blueCap || match.redCap !== redCap) continue;
         if (countTeam(match, 'blue') < blueCap || countTeam(match, 'red') < redCap) return match;
     }
@@ -313,8 +326,58 @@ function computeBotInput(bot, match) {
     }
 }
 
+// --- MATCH END ---
+// Info broadcast with every state packet (old clients ignore the extra
+// field). timeLeft is null until the clock starts.
+function matchStateInfo(match) {
+    return {
+        timeLeft: match.timerStarted
+            ? Math.max(0, Math.ceil((MATCH_DURATION_TICKS - match.timerTicks) / 60))
+            : null,
+        score: match.score,
+        ended: match.ended,
+        winner: match.winner
+    };
+}
+
+function broadcastState(match) {
+    match.emitVolatile('state', {
+        players: match.players,
+        snowballs: match.snowballs,
+        match: matchStateInfo(match)
+    });
+}
+
+function endMatch(match) {
+    match.ended = true;
+    match.snowballs = [];
+    match.winner = match.score.blue > match.score.red ? 'blue'
+        : match.score.red > match.score.blue ? 'red' : 'draw';
+    match.emit('matchEnd', { winner: match.winner, score: match.score });
+}
+
 // --- MATCH TICK ---
 function tickMatch(match) {
+    // Ended matches freeze: no more AI, movement, or snowballs — just
+    // keep broadcasting state so clients hold the final scene.
+    if (match.ended) {
+        broadcastState(match);
+        return;
+    }
+
+    // Match clock: starts once at least 2 players are present.
+    if (!match.timerStarted && Object.keys(match.players).length >= 2) {
+        match.timerStarted = true;
+    }
+    if (match.timerStarted) {
+        match.timerTicks++;
+        if (match.timerTicks >= MATCH_DURATION_TICKS) {
+            endMatch(match);
+            broadcastState(match);
+            return;
+        }
+    }
+
     // 1. Bot AI + bot throw releases (charge reaches difficulty's chargeAt).
     for (const id in match.players) {
         const p = match.players[id];
@@ -356,6 +419,8 @@ function tickMatch(match) {
             if (dist < p.radius + ball.radius + bonus) {
                 ball.active = false;
                 p.isFrozen = true;
+                // Team score: freezes inflicted by this team.
+                if (ball.team === 'blue' || ball.team === 'red') match.score[ball.team]++;
                 match.emit('hit', { x: p.x, y: p.y, id: p.id });
 
                 // Auto-thaw after 5 seconds (only if the match still exists).
@@ -378,10 +443,7 @@ function tickMatch(match) {
     match.snowballs = match.snowballs.filter(b => b.active);
 
     // 4. Broadcast State (match room only).
-    match.emitVolatile('state', {
-        players: match.players,
-        snowballs: match.snowballs
-    });
+    broadcastState(match);
 }
 
 // --- SERVER LOOP (60 TPS, iterates all matches) ---
