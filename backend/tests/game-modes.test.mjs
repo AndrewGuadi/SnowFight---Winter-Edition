@@ -6,9 +6,14 @@
 //   server -> client: 'init' { id, team, match: { mode, blueCap, redCap,
 //                              difficulty }, ... }
 //                     or 'joinError' { message }
-//   server -> client: 'state' { players, snowballs } at 60 TPS, match-room only.
+//   server -> client: 'state' { players, snowballs,
+//                              match: { timeLeft, score, ended, winner } }
+//                     at 60 TPS, match-room only.
+//   server -> client: 'matchEnd' { winner, score } when the 3-minute
+//                     match timer expires (winner = most freezes inflicted).
 // Difficulty applies to single-player bots only (multiplayer has no bots);
-// invalid or missing values default to 'normal'.
+// invalid or missing values default to 'normal'. The match length is
+// MATCH_DURATION_TICKS (default 10800 = 3 minutes at 60 TPS).
 //
 // Run: npm test   (from backend/)
 // Requires socket.io-client (devDependency). The server under test is
@@ -50,9 +55,9 @@ function waitForServerReady(proc) {
     });
 }
 
-async function connectClient() {
+async function connectClient(url = URL) {
     return new Promise((resolve, reject) => {
-        const socket = io(URL, { transports: ['websocket'], reconnection: false });
+        const socket = io(url, { transports: ['websocket'], reconnection: false });
         const to = setTimeout(() => reject(new Error('connect timeout')), 5000);
         socket.on('connect', () => {
             clearTimeout(to);
@@ -546,5 +551,90 @@ describe('bot difficulty, snowball lob, and hit bonus', () => {
             return;
         }
         assert.ok(threw, 'never got a graze attempt in 20s');
+    });
+});
+
+describe('timed matches and results', () => {
+    // Short-clock server (2-second matches) so timer tests don't wait
+    // 3 minutes. The main suite server keeps the default duration.
+    const SHORT_PORT = 3459;
+    const SHORT_URL = `http://127.0.0.1:${SHORT_PORT}`;
+    let shortProc;
+
+    before(async () => {
+        shortProc = spawn('node', [SERVER_FILE], {
+            env: { ...process.env, PORT: String(SHORT_PORT), MATCH_DURATION_TICKS: '120' },
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        await waitForServerReady(shortProc);
+    });
+
+    after(() => {
+        if (shortProc && !shortProc.killed) shortProc.kill();
+    });
+
+    // Resolve with the next matchEnd payload on a socket.
+    function waitForMatchEnd(socket, timeoutMs = 10000) {
+        return new Promise((resolve, reject) => {
+            const to = setTimeout(() => reject(new Error('matchEnd timed out')), timeoutMs);
+            socket.once('matchEnd', (data) => {
+                clearTimeout(to);
+                resolve(data);
+            });
+        });
+    }
+
+    test('a 3-minute match ends on the clock with a draw when nobody scores', async (t) => {
+        const s = await connectClient(SHORT_URL);
+        t.after(() => s.disconnect());
+        await join(s, 'single', 1, 1);
+        const end = await waitForMatchEnd(s);
+        assert.equal(end.winner, 'draw');
+        assert.deepEqual(end.score, { blue: 0, red: 0 });
+        const box = trackState(s);
+        const st = await waitForState(box, (x) => x.match && x.match.ended === true, 'ended state');
+        assert.equal(st.match.winner, 'draw');
+        assert.equal(st.match.timeLeft, 0);
+    });
+
+    test('a freeze scores for the thrower team (bot freezing the human scores red)', async (t) => {
+        const s = await connectClient();
+        t.after(() => s.disconnect());
+        await join(s, 'single', 1, 1);
+        const box = trackState(s);
+        // Stand still: the bot closes in and throws until it lands a hit.
+        const st = await waitForState(
+            box,
+            (x) => x.players[s.id] && x.players[s.id].isFrozen
+                && x.match && x.match.score.red >= 1,
+            'human frozen with red on the board',
+            30000,
+        );
+        assert.ok(st.players[s.id].isFrozen);
+        assert.ok(st.match.score.red >= 1, `red score ${st.match.score.red}`);
+    });
+
+    test('ended multi matches are excluded from matchmaking', async (t) => {
+        const a = await connectClient(SHORT_URL);
+        const b = await connectClient(SHORT_URL);
+        t.after(() => {
+            a.disconnect();
+            b.disconnect();
+        });
+        const ra = await join(a, 'multi', 5, 5);
+        assert.equal(ra.kind, 'init');
+        await join(b, 'multi', 5, 5);
+        // The 5v5 room ends on the short clock with open slots remaining.
+        await waitForMatchEnd(a);
+        const c = await connectClient(SHORT_URL);
+        t.after(() => c.disconnect());
+        const rc = await join(c, 'multi', 5, 5);
+        assert.equal(rc.kind, 'init');
+        // A fresh room: different obstacles, solo, and not already ended.
+        assert.notEqual(JSON.stringify(rc.data.obstacles), JSON.stringify(ra.data.obstacles),
+            'joiner landed in the ended match');
+        const boxC = trackState(c);
+        const stC = await waitForState(boxC, (x) => playersOf(x).length === 1, 'fresh match, solo');
+        assert.equal(stC.match.ended, false);
     });
 });
