@@ -4,11 +4,15 @@
   "description": "Multiplayer server for Snowbrawl: World War",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/game-modes.test.mjs"
   },
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.5.4"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.7.5"
   },
   "engines": {
     "node": ">=16.x"
