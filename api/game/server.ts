@@ -199,6 +199,9 @@ function computeBotInput(bot: ServerPlayerData, match: MatchState) {
   const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.2;
   if (d <= 550) {
     bot.inputs = { moveX: 0, moveY: 0, angle, dash: false, gather: false, throwStart: bot.chargeLevel === 0, throwRelease: false };
+    // OG parity: the throwStart flag alone never starts a charge — kick it
+    // off here, or bots hold the ball forever and never throw.
+    if (bot.chargeLevel === 0) bot.chargeLevel = 1;
   } else {
     bot.inputs = { moveX: nx, moveY: ny, angle, dash: Math.random() < 0.005, gather: false, throwStart: false, throwRelease: false };
     bot.chargeLevel = 0;
@@ -380,16 +383,24 @@ function tickMatch(match: MatchState, io: SocketIOServer) {
   }
   match.snowballs = activeSnowballs;
 
-  // Check win condition (all enemies frozen)
-  const blueAlive = Array.from(match.players.values()).filter((p) => p.team === "blue" && !p.isFrozen).length;
-  const redAlive = Array.from(match.players.values()).filter((p) => p.team === "red" && !p.isFrozen).length;
+  // Check win condition (all enemies frozen) — only once both teams
+  // actually have players. An empty team is not "eliminated": without
+  // this guard, a lone player would instantly "win" the moment an
+  // immediately-starting room ticks, which is what unfreezing rooms
+  // would otherwise cause.
+  const blueTotal = Array.from(match.players.values()).filter((p) => p.team === "blue").length;
+  const redTotal = Array.from(match.players.values()).filter((p) => p.team === "red").length;
+  if (blueTotal > 0 && redTotal > 0) {
+    const blueAlive = Array.from(match.players.values()).filter((p) => p.team === "blue" && !p.isFrozen).length;
+    const redAlive = Array.from(match.players.values()).filter((p) => p.team === "red" && !p.isFrozen).length;
 
-  if (blueAlive === 0 && redAlive === 0) {
-    finishMatch(match, io, "draw");
-  } else if (blueAlive === 0) {
-    finishMatch(match, io, "red");
-  } else if (redAlive === 0) {
-    finishMatch(match, io, "blue");
+    if (blueAlive === 0 && redAlive === 0) {
+      finishMatch(match, io, "draw");
+    } else if (blueAlive === 0) {
+      finishMatch(match, io, "red");
+    } else if (redAlive === 0) {
+      finishMatch(match, io, "blue");
+    }
   }
 
   // Broadcast state (stripped)
@@ -494,8 +505,10 @@ function createMatch(
     players: new Map(),
     snowballs: [],
     obstacles: makeObstacles(),
-    startTime: Date.now(),
-    endTime: Date.now() + GAME_CONFIG.matchDuration * 1000,
+    // Timer starts on activation, not creation — otherwise a room that
+    // waits to fill would end the instant it starts.
+    startTime: 0,
+    endTime: null,
     winner: null,
     status: "waiting",
     partyCode,
@@ -507,9 +520,17 @@ function createMatch(
   return match;
 }
 
+function activateMatch(match: MatchState) {
+  if (match.status === "finished") return;
+  match.status = "active";
+  match.startTime = Date.now();
+  match.endTime = Date.now() + GAME_CONFIG.matchDuration * 1000;
+}
+
 function findMultiMatch(blueCap: number, redCap: number): MatchState | null {
   for (const match of matches.values()) {
-    if (match.mode !== "multi" || match.status !== "waiting") continue;
+    if (match.mode !== "multi" || match.status !== "active") continue;
+    if (match.partyCode) continue; // party rooms are invite-only, not open matchmaking
     if (match.blueCap !== blueCap || match.redCap !== redCap) continue;
     const blues = Array.from(match.players.values()).filter((p) => p.team === "blue").length;
     const reds = Array.from(match.players.values()).filter((p) => p.team === "red").length;
@@ -558,8 +579,8 @@ export function createGameServer(httpServer: HttpServer) {
   });
 
   io.on("connection", (socket) => {
-    // Rate limiting maps
-    const lastInputTime = { time: 0 };
+    // Throw rate limit (gather gating already limits throws to ~1.3/s,
+    // so this is only an anti-spam backstop)
     const lastThrowTime = { time: 0 };
 
     socket.on("join", (data: { mode?: string; blue?: number; red?: number; partyCode?: string }) => {
@@ -580,11 +601,12 @@ export function createGameServer(httpServer: HttpServer) {
       if (code && partyCodes.has(code)) {
         // Join by party code
         const existing = matches.get(partyCodes.get(code)!);
-        if (!existing) {
+        if (!existing || existing.status === "finished") {
           socket.emit("joinError", { message: "Party code expired." });
           return;
         }
         match = existing;
+        if (match.status !== "active") activateMatch(match);
         const blues = countTeam(match, "blue");
         const reds = countTeam(match, "red");
         let team: "blue" | "red";
@@ -602,7 +624,7 @@ export function createGameServer(httpServer: HttpServer) {
         match.spatialGrid.insert(match.players.get(socket.id)!);
         for (let i = 0; i < blue - 1; i++) addBot(match, "blue");
         for (let i = 0; i < red; i++) addBot(match, "red");
-        match.status = "active";
+        activateMatch(match);
       } else {
         const foundMatch = findMultiMatch(blue, red);
         match = foundMatch ?? createMatch("multi", blue, red);
@@ -618,10 +640,9 @@ export function createGameServer(httpServer: HttpServer) {
         match.players.set(socket.id, createPlayer(socket.id, team, false));
         match.spatialGrid.insert(match.players.get(socket.id)!);
 
-        // Start match when full
-        if (countTeam(match, "blue") === match.blueCap && countTeam(match, "red") === match.redCap) {
-          match.status = "active";
-        }
+        // Rooms start immediately on first join (OG behavior) — no waiting
+        // for a full room, and the timer starts now, not at creation.
+        if (match.status !== "active") activateMatch(match);
       }
 
       socket.join(match.id);
@@ -649,6 +670,7 @@ export function createGameServer(httpServer: HttpServer) {
       const match = createMatch("multi", blue, red, code);
       match.players.set(socket.id, createPlayer(socket.id, "blue", false));
       match.spatialGrid.insert(match.players.get(socket.id)!);
+      activateMatch(match);
       socket.join(match.id);
       socket.emit("partyCreated", { code, matchId: match.id });
       socket.emit("init", {
@@ -658,15 +680,15 @@ export function createGameServer(httpServer: HttpServer) {
         obstacles: match.obstacles,
         team: "blue",
         match: { mode: "multi", blueCap: match.blueCap, redCap: match.redCap },
-        timeRemaining: null,
+        timeRemaining: match.status === "active" ? Math.max(0, Math.ceil((match.endTime! - Date.now()) / 1000)) : null,
       });
     });
 
     socket.on("input", (data: Partial<PlayerInputs>) => {
       const now = Date.now();
-      // Throttle inputs to 20Hz
-      if (now - lastInputTime.time < 50) return;
-      lastInputTime.time = now;
+      // No input throttle: the client emits every frame and momentary
+      // actions (throw/dash) live for exactly one frame, so throttling
+      // here silently drops most quick taps. OG processes every input.
 
       const inputs = normalizeInputs(data);
 
