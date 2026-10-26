@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Snowbrawl: World War (Online)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="assets/ui.css">
+    <script src="assets/socket.io.min.js"></script>
     <style>
         :root { --btn-scale: 1; }
         body { 
@@ -31,6 +31,48 @@
         .animate-pop { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
         .hidden { display: none !important; }
+
+        body { background: #dbeef3; color: #173b51; }
+        button, select { touch-action: manipulation; }
+        button:focus-visible, select:focus-visible { outline: 3px solid #fbbf24; outline-offset: 4px; }
+        #start-screen, #results-overlay { background: radial-gradient(ellipse at 20% 0%, #236080, #0b2135 72%); padding: 28px 16px; overflow-y: auto; touch-action: pan-y; }
+        #start-screen > div, #results-overlay > div { width: min(100%, 480px); flex-shrink: 0; margin: auto; padding: 28px; border-radius: 28px; background: #f2f8fa; box-shadow: 0 28px 90px #00121e88; }
+        #start-screen h1 { font-size: clamp(32px, 8vw, 48px); letter-spacing: -2px; }
+        .field-intro { margin: 14px 0; font-weight: 700; color: #22495f; }
+        .mission-label { display:block; font-size:10px; font-weight:900; letter-spacing:2px; text-align:left; margin:16px 0 7px; }
+        #mission-select { width:100%; padding:12px; border:1px solid #b9d5e1; border-radius:12px; background:#e3eff4; color:#214960; font-weight:700; }
+        .field-hint { font-size:12px; line-height:1.7; color:#527083; margin:12px 0; }
+        #btn-play { background:#087caa; border-bottom:4px solid #06526f; letter-spacing:2px; }
+        .menu-btn.menu-active { background:#153e55; box-shadow:0 3px 0 #082331; }
+        .glass-panel { background:#f4fbf5e8; border-color:#fff; backdrop-filter:none; box-shadow:0 4px 16px #163e5c18; }
+        #field-hud { position:fixed; top:100px; left:16px; pointer-events:none; max-width:calc(100% - 32px); z-index:41; }
+        #assignment { letter-spacing:1px; font-size:11px; font-weight:900; }
+        #combat-status { font-size:14px; font-weight:800; margin-top:5px; }
+        #network-status { font:10px monospace; color:#4f6e80; margin-top:5px; }
+        #sound-toggle { position:fixed; bottom:calc(10px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:45; background:#153e55; color:white; border-radius:20px; padding:10px 14px; font-size:10px; font-weight:800; }
+        #joystick-zone { bottom:calc(35px + env(safe-area-inset-bottom)); left:max(20px, env(safe-area-inset-left)); width:120px; height:120px; touch-action:none; }
+        #joystick-zone > div { background:#d9edf3bb; border:2px solid #f8ffff; }
+        #action-zone { bottom:calc(35px + env(safe-area-inset-bottom)); right:max(20px, env(safe-area-inset-right)); gap:8px; }
+        .control-btn { touch-action:none; box-shadow:0 5px 0 #173b5133, 0 7px 20px #173b5122; }
+        #btn-throw { background:#087caa; }
+        #btn-dash { background:#c4882b; }
+        #btn-gather { background:#3e6475; }
+        #btn-throw::after, #btn-dash::after, #btn-gather::after { position:absolute; bottom:8px; color:white; font-size:9px; font-weight:900; letter-spacing:1px; }
+        #btn-throw::after { content:'THROW'; }
+        #btn-dash::after { content:'DASH'; }
+        #btn-gather::after { content:'PACK'; }
+        @media (max-width:600px) {
+            #ui-layer { padding: max(10px, env(safe-area-inset-top)) 10px 10px; }
+            #ui-layer > div { gap:6px; }
+            #ui-layer .min-w-\[80px\] { min-width:48px; padding:6px 9px; }
+            #ui-layer .glass-panel:nth-child(2) { flex-wrap:wrap; justify-content:center; flex:1; max-width:240px; }
+            #match-badge { width:100%; text-align:center; font-size:10px; }
+            .view-btn { padding:4px 8px; }
+            #field-hud { top:108px; }
+            #start-screen > div { padding:22px 18px; }
+        }
+        @media (max-height:500px) { #field-hud { top:80px; } #action-zone { flex-direction:row; align-items:flex-end; } #joystick-zone { width:100px; height:100px; } #action-zone, #joystick-zone { bottom:20px; } }
+        @media (prefers-reduced-motion:reduce) { *, *::after { animation:none!important; transition:none!important; } }
     </style>
 </head>
 <body>
@@ -42,7 +84,7 @@
     <div id="start-screen" class="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
         <div class="bg-white/95 p-8 rounded-3xl shadow-2xl text-center max-w-lg w-full mx-4 border border-white/50 animate-pop">
             <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-400 mb-2">SNOWBRAWL</h1>
-            <p class="text-slate-500 font-bold mb-6 tracking-widest text-xs uppercase">Multiplayer Edition</p>
+            <p class="text-slate-500 font-bold mb-6 tracking-widest text-xs uppercase">WINTER FIELD CLUB · SEASON 01</p>
             
             <div id="connection-status" class="mb-6 flex flex-col items-center">
                 <div class="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-2"></div>
@@ -70,6 +112,15 @@
                 <button id="diff-normal" onclick="selectDifficulty('normal')" class="menu-btn menu-active flex-1 py-2 rounded-xl font-black text-sm">Normal</button>
                 <button id="diff-hard" onclick="selectDifficulty('hard')" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">Hard</button>
             </div>
+            <p class="field-intro">Cold hands. Quick feet. One more round.</p>
+            <label class="mission-label" for="mission-select">YOUR FIELD ASSIGNMENT</label>
+            <select id="mission-select" onchange="selectMission(this.value)">
+                <option value="scout">Scout · land 3 freezes</option>
+                <option value="striker">Striker · land 6 freezes</option>
+                <option value="ace">Snow ace · land 10 freezes</option>
+            </select>
+            <p id="career-line" class="field-hint"></p>
+            <p class="field-hint">Move with the left thumb. Drag THROW to aim; release to fire.<br>Hold PACK for fresh snow. DASH to escape.<br>Desktop: WASD · mouse aim/hold to throw · G pack · Space dash.</p>
             <p id="menu-error" class="hidden text-red-500 font-bold text-sm mb-3"></p>
 
             <button id="btn-play" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
@@ -83,6 +134,7 @@
         <div class="bg-white/95 p-8 rounded-3xl shadow-2xl text-center max-w-lg w-full mx-4 border border-white/50 animate-pop">
             <h2 id="results-title" class="text-5xl font-black mb-2 text-slate-700">DRAW</h2>
             <p id="results-score" class="text-slate-500 font-bold mb-6 tracking-widest text-sm">Blue 0 – 0 Red</p>
+            <p id="results-personal" class="field-hint"></p>
             <div class="flex gap-2">
                 <button onclick="rematch()" class="flex-1 py-3 rounded-xl font-black bg-blue-600 text-white">REMATCH</button>
                 <button onclick="location.reload()" class="flex-1 py-3 rounded-xl font-black bg-slate-200 text-slate-700">MENU</button>
@@ -110,6 +162,12 @@
         </div>
     </div>
 
+    <div id="field-hud" class="hidden" aria-live="polite">
+        <div id="assignment">SCOUT / 0 OF 3</div>
+        <div id="combat-status">SNOWBALL READY</div>
+        <div id="network-status">Connecting…</div>
+    </div>
+    <button id="sound-toggle" onclick="toggleSound()" aria-pressed="false">SOUND ON</button>
     <!-- Controls Layer -->
     <div id="controls-layer" class="hidden absolute inset-0 z-30 overflow-hidden pointer-events-none">
         <div id="joystick-zone">
@@ -145,13 +203,15 @@
  * --- CONFIGURATION ---
  * REPLACE WITH YOUR RENDER.COM URL
  */
-const SERVER_URL = "https://snowbrawl-server.onrender.com/"; 
+const SERVER_URL = ['localhost', '127.0.0.1'].includes(location.hostname)
+    ? location.origin : "https://snowbrawl-server.onrender.com/";
 // Example: const SERVER_URL = "https://snowbrawl-backend.onrender.com";
 
 const socket = io(SERVER_URL);
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
 
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const CONFIG = {
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
@@ -188,12 +248,13 @@ const STATE = {
  */
 const Audio = {
     ctx: null,
+    muted: false,
     init: function() {
         if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         if (this.ctx.state === 'suspended') this.ctx.resume();
     },
     playTone: function(freq, type, duration, vol, slideTo = null) {
-        if (!this.ctx) return;
+        if (!this.ctx || this.muted) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = type; osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
@@ -204,7 +265,7 @@ const Audio = {
         osc.start(); osc.stop(this.ctx.currentTime + duration);
     },
     playNoise: function(duration, vol) {
-        if (!this.ctx) return;
+        if (!this.ctx || this.muted) return;
         const bufferSize = this.ctx.sampleRate * duration;
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -256,26 +317,27 @@ class VisualPlayer {
         this.chargeLevel = serverData.chargeLevel;
         this.gatherProgress = serverData.gatherProgress;
 
-        // Smooth Interpolation
-        this.x += (this.targetX - this.x) * 0.25;
-        this.y += (this.targetY - this.y) * 0.25;
+        this.vx = serverData.vx || 0;
+        this.vy = serverData.vy || 0;
+        this.facingAngle = serverData.inputs.angle;
+        this.dashCooldownTimer = serverData.dashCooldownTimer;
+        this.freezeTicks = serverData.freezeTicks || 0;
+        this.stats = serverData.stats || { freezes: 0, throws: 0, dashes: 0 };
+        this.receivedAt = performance.now();
+    }
 
-        // Walk Cycle
-        const dx = this.targetX - this.x;
-        const dy = this.targetY - this.y;
-        const speed = Math.hypot(dx, dy);
-        
-        if (speed > 1) {
-            this.facingAngle = Math.atan2(dy, dx);
-            this.walkCycle += 0.2 + (speed * 0.05);
-            if (Math.random() < 0.1) {
-                STATE.footprints.push({x: this.x, y: this.y + 10, life: 200, angle: this.facingAngle});
-            }
-        } else {
-            this.walkCycle = 0;
-        }
-        
-        if (this.flashTimer > 0) this.flashTimer--;
+    animate(dt, now) {
+        // Bounded dead reckoning between snapshots; never simulate hits locally.
+        const age = Math.min(50, Math.max(0, now - this.receivedAt)) / (1000/60);
+        const blend = 1 - Math.exp(-dt / (this.id === STATE.id ? 24 : 45));
+        this.x += (this.targetX + (this.isFrozen ? 0 : this.vx * age) - this.x) * blend;
+        this.y += (this.targetY + (this.isFrozen ? 0 : this.vy * age) - this.y) * blend;
+        if (this.id === STATE.id) this.facingAngle = STATE.inputs.angle;
+        const speed = Math.hypot(this.vx, this.vy);
+        this.walkCycle = speed > 0.3 ? this.walkCycle + dt * speed * 0.012 : 0;
+        if (speed > 1 && Math.random() < dt / 170 && STATE.footprints.length < 240)
+            STATE.footprints.push({ x:this.x, y:this.y+10, life:200, angle:this.facingAngle });
+        this.flashTimer = Math.max(0, this.flashTimer - dt / 16.67);
     }
 
     draw(camX, camY) {
@@ -384,10 +446,11 @@ class Popup {
 }
 
 function createParticles(x, y, color, count) {
-    for(let i=0; i<count; i++) STATE.particles.push(new Particle(x, y, color));
+    for(let i=0; i<count && STATE.particles.length < 180; i++) STATE.particles.push(new Particle(x, y, color));
 }
 
 function addPopup(x, y, text, color) {
+    if (STATE.popups.length >= 24) STATE.popups.shift();
     STATE.popups.push(new Popup(x, y, text, color));
 }
 
@@ -404,6 +467,10 @@ socket.on('connect', () => {
 });
 
 socket.on('init', (data) => {
+    STATE.players = {}; STATE.snowballs = []; STATE.particles = []; STATE.popups = [];
+    resetControls();
+    STATE.ended = false; STATE.savedResult = false;
+    document.getElementById('field-hud').classList.remove('hidden');
     STATE.id = data.id;
     STATE.team = data.team;
     STATE.worldWidth = data.width;
@@ -446,11 +513,14 @@ socket.on('state', (serverData) => {
         if (!serverData.players[id]) delete STATE.players[id];
     }
     STATE.snowballs = serverData.snowballs;
+    STATE.snapshotAt = performance.now();
+    updateFieldHud();
+    if (serverData.match?.ended && !STATE.ended) showResults(serverData.match);
 
     const blues = Object.values(serverData.players).filter(p => p.team === 'blue' && !p.isFrozen).length;
     const reds = Object.values(serverData.players).filter(p => p.team === 'red' && !p.isFrozen).length;
-    document.getElementById('score-blue').innerText = blues;
-    document.getElementById('score-red').innerText = reds;
+    document.getElementById('score-blue').innerText = serverData.match?.score.blue ?? blues;
+    document.getElementById('score-red').innerText = serverData.match?.score.red ?? reds;
     // Match clock + freeze score in the badge (e.g. "Single • 5v5 • 2:31 • 5–3").
     if (serverData.match && STATE.badgeBase) {
         const m = serverData.match;
@@ -463,6 +533,7 @@ socket.on('state', (serverData) => {
 });
 
 socket.on('effect', (data) => {
+    if (data.type === 'obs_hit') createParticles(data.x, data.y, '#d3f6ff', 6);
     if (data.type === 'dash') {
         createParticles(data.x, data.y, '#FFF', 5);
         if (Math.hypot(STATE.camera.x - data.x, STATE.camera.y - data.y) < 800) Audio.sfx.dash();
@@ -477,6 +548,10 @@ socket.on('effect', (data) => {
 });
 
 socket.on('hit', (data) => {
+    if (data.ownerId === STATE.id) {
+        addPopup(data.x, data.y-35, 'NICE SHOT +1', '#0369a1');
+        if (!Audio.muted && navigator.vibrate) navigator.vibrate(15);
+    }
     createParticles(data.x, data.y, '#FFF', 15);
     Audio.sfx.hit();
     if (STATE.players[data.id]) {
@@ -484,14 +559,16 @@ socket.on('hit', (data) => {
         addPopup(data.x, data.y, "HIT!", "#FFFF00");
     }
     if (data.id === STATE.id) {
-        CONFIG.screenShake = 10;
+        CONFIG.screenShake = reducedMotion ? 0 : 10;
         addPopup(data.x, data.y, "FROZEN!", "#00FFFF");
     }
 });
 
 // Match end (3-minute timer): show the results overlay. VICTORY when the
 // player's own team scored more freezes, DEFEAT when it scored fewer.
-socket.on('matchEnd', (data) => {
+function showResults(data) {
+    if (STATE.ended) return;
+    STATE.ended = true; resetControls();
     const title = document.getElementById('results-title');
     if (data.winner === 'draw') {
         title.innerText = 'DRAW';
@@ -505,8 +582,16 @@ socket.on('matchEnd', (data) => {
     }
     document.getElementById('results-score').innerText =
         `Blue ${data.score.blue} – ${data.score.red} Red`;
+    const stats = STATE.players[STATE.id]?.stats || { freezes: 0, throws: 0 };
+    const completed = stats.freezes >= MISSIONS[mission].target;
+    document.getElementById('results-personal').textContent = `${stats.freezes} freezes · ${stats.throws} throws · ${completed ? 'Assignment complete!' : 'Assignment: ' + stats.freezes + '/' + MISSIONS[mission].target} · Best: ${Math.max(career.best, stats.freezes)}`;
+    career.rounds++; career.best = Math.max(career.best, stats.freezes);
+    if (completed) career.medals++;
+    try { localStorage.setItem('snowbrawl-career-v1', JSON.stringify(career)); } catch {}
     document.getElementById('results-overlay').classList.remove('hidden');
-});
+}
+// Use the following final snapshot for exact personal stats, not the earlier event.
+socket.on('matchEnd', () => { resetControls(); });
 
 /**
  * --- MODE MENU ---
@@ -566,27 +651,20 @@ function joinGame() {
     socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty });
 }
 
-function gameLoop() {
+let previousFrame = performance.now(), lastInputSent = 0;
+function gameLoop(now = performance.now()) {
     requestAnimationFrame(gameLoop);
-    
-    // --- SEND INPUT ---
-    if (STATE.id) {
-        socket.emit('input', {
-            moveX: STATE.inputs.moveX,
-            moveY: STATE.inputs.moveY,
-            dash: STATE.inputs.dash,
-            gather: STATE.inputs.gather,
-            throwStart: STATE.inputs.throwStart,
-            throwRelease: STATE.inputs.throwRelease,
-            angle: STATE.inputs.angle
-        });
-        
-        // Reset single-frame triggers ONLY
-        STATE.inputs.throwStart = false;
-        STATE.inputs.throwRelease = false;
-        STATE.inputs.dash = false;
-        // NOTE: We do NOT reset gather here, as it needs to be held down
+    const dt = Math.min(50, Math.max(0, now - previousFrame)); previousFrame = now;
+    // 30Hz movement, immediate action edges. Never buffer gameplay while offline.
+    if (STATE.id && !STATE.ended && socket.connected && !document.hidden) {
+        const edge = STATE.inputs.throwStart || STATE.inputs.throwRelease || STATE.inputs.dash;
+        if (edge || now - lastInputSent >= 1000/30) {
+            (edge ? socket : socket.volatile).emit('input', { ...STATE.inputs });
+            lastInputSent = now;
+            STATE.inputs.throwStart = STATE.inputs.throwRelease = STATE.inputs.dash = false;
+        }
     }
+    Object.values(STATE.players).forEach(p => p.animate(dt, now));
 
     // --- CAMERA ---
     let shakeX = 0, shakeY = 0;
@@ -610,7 +688,8 @@ function gameLoop() {
     const cy = STATE.camera.y + shakeY;
 
     // --- RENDER ---
-    ctx.clearRect(0, 0, CONFIG.viewportWidth, CONFIG.viewportHeight);
+    ctx.fillStyle = '#dbeef3';
+    ctx.fillRect(0, 0, CONFIG.viewportWidth, CONFIG.viewportHeight);
 
     // Zoom about the screen center so the player stays centered at any view.
     const zoom = VIEWS[STATE.viewIndex].zoom;
@@ -624,14 +703,14 @@ function gameLoop() {
     ctx.translate(-vw / 2, -vh / 2);
 
     // Grid (aligned to world coordinates, so it stays put when zooming)
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 2; ctx.beginPath();
     const gridSize = 100;
     for(let wx = Math.floor(visX0 / gridSize) * gridSize; wx <= visX1; wx += gridSize) { ctx.moveTo(wx - cx, visY0 - cy); ctx.lineTo(wx - cx, visY1 - cy); }
     for(let wy = Math.floor(visY0 / gridSize) * gridSize; wy <= visY1; wy += gridSize) { ctx.moveTo(visX0 - cx, wy - cy); ctx.lineTo(visX1 - cx, wy - cy); }
     ctx.stroke();
 
     // Border
-    ctx.strokeStyle = '#FF0000'; ctx.lineWidth = 5;
+    ctx.strokeStyle = '#8eabbc'; ctx.lineWidth = 12;
     ctx.strokeRect(0 - cx, 0 - cy, STATE.worldWidth, STATE.worldHeight);
 
     // Footprints
@@ -664,22 +743,43 @@ function gameLoop() {
         }
     });
 
+    // Local aim guide: projected direction, not a promise of a hit through cover.
+    if (myPlayer && myPlayer.hasBall && !myPlayer.isFrozen) {
+        const angle = STATE.inputs.angle, range = 110 + myPlayer.chargeLevel * 2;
+        ctx.save(); ctx.setLineDash([5, 9]); ctx.strokeStyle = '#19729b'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(myPlayer.x-cx, myPlayer.y-cy);
+        ctx.lineTo(myPlayer.x-cx+Math.cos(angle)*range, myPlayer.y-cy+Math.sin(angle)*range); ctx.stroke(); ctx.restore();
+    }
     // Players
     const renderList = Object.values(STATE.players).sort((a,b) => a.y - b.y);
-    renderList.forEach(p => p.draw(cx, cy));
+    renderList.forEach(p => { if (p.x > visX0-60 && p.x < visX1+60 && p.y > visY0-60 && p.y < visY1+60) p.draw(cx, cy); });
 
     // Snowballs
     STATE.snowballs.forEach(b => {
-        const dx = b.x - cx; const dy = b.y - cy - b.z;
+        const age = Math.min(33, Math.max(0, now-(STATE.snapshotAt || now))) / 16.667;
+        const dx = b.x + b.vx*age - cx; const dy = b.y + b.vy*age - cy - b.z;
+        ctx.strokeStyle = b.team === 'blue' ? '#7cbce0' : '#e5a4a4'; ctx.lineWidth = b.radius;
+        ctx.beginPath(); ctx.moveTo(dx-b.vx*0.8, dy-b.vy*0.8); ctx.lineTo(dx, dy); ctx.stroke();
         ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(b.x - cx, b.y - cy, b.radius, 0, Math.PI*2); ctx.fill(); 
         ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(dx, dy, b.radius, 0, Math.PI*2); ctx.fill();
     });
 
     // Particles/Popups
-    STATE.particles.forEach((p, i) => { p.update(); p.draw(cx, cy); if(p.life<=0) STATE.particles.splice(i,1); });
-    STATE.popups.forEach((p, i) => { p.update(); p.draw(cx, cy); if(p.life<=0) STATE.popups.splice(i,1); });
+    STATE.particles = STATE.particles.filter(p => { p.update(); p.draw(cx, cy); return p.life > 0; });
+    STATE.popups = STATE.popups.filter(p => { p.update(); p.draw(cx, cy); return p.life > 0; });
 
     ctx.restore();
+    if (myPlayer) {
+        const rw=96, rh=64, rx=CONFIG.viewportWidth-rw-12, ry=110;
+        ctx.fillStyle='#173b51cc'; ctx.beginPath(); ctx.roundRect(rx,ry,rw,rh,8); ctx.fill();
+        for (const p of Object.values(STATE.players)) {
+            ctx.fillStyle=p.id===STATE.id?'#fff':p.team===STATE.team?'#67d7ff':'#ff967e';
+            ctx.globalAlpha=p.isFrozen?0.3:1;
+            ctx.beginPath(); ctx.arc(rx+5+p.targetX/STATE.worldWidth*(rw-10),ry+5+p.targetY/STATE.worldHeight*(rh-10),p.id===STATE.id?3:2,0,Math.PI*2);ctx.fill();
+        }
+        ctx.globalAlpha=1;
+        ctx.fillStyle='#173b51';ctx.font='bold 9px Arial';ctx.fillText('FIELD RADAR',rx+16,ry+76);
+    }
 }
 
 /**
@@ -697,86 +797,137 @@ function setView(i) {
     });
 }
 
-// Joystick
+// Pointer capture keeps simultaneous thumbs independent and handles cancellation.
 const joyZone = document.getElementById('joystick-zone');
 const joyKnob = document.getElementById('joystick-knob');
-let joyActive = false;
-let joyOrigin = {x:0, y:0};
-
-const handleJoy = (e, isEnd) => {
-    if(isEnd) { joyActive = false; joyKnob.style.transform = `translate(-50%, -50%)`; STATE.inputs.moveX=0; STATE.inputs.moveY=0; return; }
-    const t = e.changedTouches ? e.changedTouches[0] : e;
-    if (!joyActive) {
-        const rect = joyZone.getBoundingClientRect();
-        joyOrigin = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-        joyActive = true;
-    }
-    let dx = t.clientX - joyOrigin.x; let dy = t.clientY - joyOrigin.y;
-    const dist = Math.hypot(dx, dy); const max = 35;
-    if (dist > max) { dx = (dx/dist)*max; dy = (dy/dist)*max; }
-    joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-    STATE.inputs.moveX = dx/max; STATE.inputs.moveY = dy/max;
-    if (dist > 5) STATE.inputs.angle = Math.atan2(STATE.inputs.moveY, STATE.inputs.moveX);
-};
-joyZone.addEventListener('touchstart', (e)=>{e.preventDefault(); handleJoy(e, false)});
-joyZone.addEventListener('touchmove', (e)=>{e.preventDefault(); handleJoy(e, false)});
-joyZone.addEventListener('touchend', (e)=>{e.preventDefault(); handleJoy(e, true)});
-
-// Buttons
 const btnDash = document.getElementById('btn-dash');
 const btnThrow = document.getElementById('btn-throw');
 const btnGather = document.getElementById('btn-gather');
-
-btnDash.addEventListener('touchstart', (e)=>{e.preventDefault(); STATE.inputs.dash = true;});
-btnThrow.addEventListener('touchstart', (e)=>{e.preventDefault(); STATE.inputs.throwStart = true;});
-btnThrow.addEventListener('touchend', (e)=>{e.preventDefault(); STATE.inputs.throwRelease = true;});
-btnGather.addEventListener('touchstart', (e)=>{e.preventDefault(); STATE.inputs.gather = true;});
-btnGather.addEventListener('touchend', (e)=>{e.preventDefault(); STATE.inputs.gather = false;});
-
-// Keyboard
-window.addEventListener('keydown', (e)=>{
-    const k = e.key.toLowerCase();
-    if(k==='w') STATE.inputs.moveY = -1;
-    if(k==='s') STATE.inputs.moveY = 1;
-    if(k==='a') STATE.inputs.moveX = -1;
-    if(k==='d') STATE.inputs.moveX = 1;
-    if(k===' ') STATE.inputs.dash = true;
-    if(k==='f') STATE.inputs.throwStart = true;
-    if(k==='g') STATE.inputs.gather = true;
-    if(k==='1') setView(0);
-    if(k==='2') setView(1);
-    if(k==='3') setView(2);
-    if(k==='v') setView((STATE.viewIndex + 1) % VIEWS.length);
+let aimPointer = null;
+function bindPointer(el, start, move, end) {
+    let pointer = null;
+    el.addEventListener('pointerdown', e => {
+        if (pointer !== null || !STATE.id || STATE.ended) return;
+        e.preventDefault(); pointer=e.pointerId; el.setPointerCapture(pointer); start(e);
+    });
+    el.addEventListener('pointermove', e => { if (e.pointerId===pointer) move(e); });
+    const finish = e => { if (e.pointerId!==pointer) return; pointer=null; end(e, e.type!=='pointerup'); };
+    ['pointerup','pointercancel','lostpointercapture'].forEach(type => el.addEventListener(type, finish));
+}
+function moveJoy(e) {
+    const r=joyZone.getBoundingClientRect(), max=r.width*0.3;
+    let dx=e.clientX-r.left-r.width/2, dy=e.clientY-r.top-r.height/2;
+    const length=Math.hypot(dx,dy), scale=Math.max(1,length/max); dx/=scale;dy/=scale;
+    joyKnob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    STATE.inputs.moveX=length<6 ? 0:dx/max; STATE.inputs.moveY=length<6 ? 0:dy/max;
+    if (length>6 && aimPointer===null) STATE.inputs.angle=Math.atan2(dy,dx);
+}
+bindPointer(joyZone, moveJoy, moveJoy, () => { STATE.inputs.moveX=STATE.inputs.moveY=0; joyKnob.style.transform='translate(-50%, -50%)'; });
+let aimOrigin;
+function dragAim(e) {
+    const dx=e.clientX-aimOrigin.x, dy=e.clientY-aimOrigin.y;
+    if (Math.hypot(dx,dy)>8) STATE.inputs.angle=Math.atan2(dy,dx);
+}
+bindPointer(btnThrow, e => { aimPointer=e.pointerId; aimOrigin={x:e.clientX,y:e.clientY}; STATE.inputs.throwStart=true; }, dragAim,
+    (_e,cancel) => { aimPointer=null; STATE.inputs.throwRelease=!cancel; if(cancel) resetControls(); });
+bindPointer(btnDash, () => STATE.inputs.dash=true, () => {}, () => {});
+bindPointer(btnGather, () => STATE.inputs.gather=true, () => {}, () => STATE.inputs.gather=false);
+const keys=new Set();
+function keyboardMovement() {
+    STATE.inputs.moveX=Number(keys.has('d'))-Number(keys.has('a'));
+    STATE.inputs.moveY=Number(keys.has('s'))-Number(keys.has('w'));
+}
+function resetControls() {
+    Object.assign(STATE.inputs, {moveX:0,moveY:0,dash:false,gather:false,throwStart:false,throwRelease:false});
+    // A cancellation also clears any server-side charge immediately.
+    if (STATE.id && socket.connected) socket.emit('input', { ...STATE.inputs, cancelCharge:true });
+    if (typeof keys !== 'undefined') keys.clear();
+    aimPointer=null;
+}
+window.addEventListener('blur', resetControls);
+document.addEventListener('visibilitychange', () => { if(document.hidden) resetControls(); });
+window.addEventListener('keydown', e => {
+    if (!STATE.id || STATE.ended || e.target.matches('input,select,button')) return;
+    const k=e.key.toLowerCase();
+    if ('wasdfg123v '.includes(k)) e.preventDefault();
+    if(e.repeat) return;
+    keys.add(k); keyboardMovement();
+    if(k===' ') STATE.inputs.dash=true;
+    if(k==='f') STATE.inputs.throwStart=true;
+    if(k==='g') STATE.inputs.gather=true;
+    if(['1','2','3'].includes(k)) setView(Number(k)-1);
+    if(k==='v') setView((STATE.viewIndex+1)%VIEWS.length);
 });
-window.addEventListener('keyup', (e)=>{
-    const k = e.key.toLowerCase();
-    if(k==='w'||k==='s') STATE.inputs.moveY = 0;
-    if(k==='a'||k==='d') STATE.inputs.moveX = 0;
-    if(k===' ') STATE.inputs.dash = false;
-    if(k==='f') STATE.inputs.throwRelease = true;
-    if(k==='g') STATE.inputs.gather = false;
+window.addEventListener('keyup', e => {
+    const k=e.key.toLowerCase(); keys.delete(k); keyboardMovement();
+    if(k==='f') STATE.inputs.throwRelease=true;
+    if(k==='g') STATE.inputs.gather=false;
 });
 
 // Mouse Aim (zoom-aware: the player renders at the zoomed screen position)
 window.addEventListener('mousemove', (e) => {
     const p = STATE.players[STATE.id];
-    if (!p) return;
+    if (!p || aimPointer !== null) return;
     const zoom = VIEWS[STATE.viewIndex].zoom;
     const px = CONFIG.viewportWidth / 2 + (p.x - STATE.camera.x - CONFIG.viewportWidth / 2) * zoom;
     const py = CONFIG.viewportHeight / 2 + (p.y - STATE.camera.y - CONFIG.viewportHeight / 2) * zoom;
     STATE.inputs.angle = Math.atan2(e.clientY - py, e.clientX - px);
 });
-window.addEventListener('mousedown', (e) => {
-    if (e.button === 0) STATE.inputs.throwStart = true;
-    if (e.button === 2) STATE.inputs.gather = true;
+let mouseAction = null;
+canvas.addEventListener('pointerdown', e => {
+    if(e.pointerType!=='mouse' || !STATE.id || STATE.ended) return;
+    canvas.setPointerCapture(e.pointerId); mouseAction=e.button;
+    if(e.button===0) STATE.inputs.throwStart=true;
+    if(e.button===2) STATE.inputs.gather=true;
 });
-window.addEventListener('mouseup', (e) => {
-    if (e.button === 0) STATE.inputs.throwRelease = true;
-    if (e.button === 2) STATE.inputs.gather = false;
+canvas.addEventListener('pointerup', e => {
+    if(e.pointerType!=='mouse' || mouseAction===null) return;
+    if(mouseAction===0) STATE.inputs.throwRelease=true;
+    if(mouseAction===2) STATE.inputs.gather=false;
+    mouseAction=null;
 });
+canvas.addEventListener('pointercancel', () => {mouseAction=null;resetControls();});
 window.addEventListener('contextmenu', e=>e.preventDefault());
+
+
+const MISSIONS = { scout:{label:'SCOUT',target:3}, striker:{label:'STRIKER',target:6}, ace:{label:'SNOW ACE',target:10} };
+let mission='scout', career={rounds:0,medals:0,best:0};
+try { const saved=JSON.parse(localStorage.getItem('snowbrawl-career-v1')); if(saved) for(const key of Object.keys(career)) if(Number.isFinite(saved[key]) && saved[key]>=0) career[key]=saved[key]; } catch {}
+document.getElementById('career-line').textContent=`${career.rounds} rounds · ${career.medals} assignments completed · Best ${career.best} freezes (this device)`;
+function selectMission(value) { if(MISSIONS[value]) mission=value; }
+function toggleSound() { Audio.muted=!Audio.muted; const b=document.getElementById('sound-toggle'); b.textContent=Audio.muted?'SOUND OFF':'SOUND ON'; b.setAttribute('aria-pressed',String(Audio.muted)); }
+function updateFieldHud() {
+    const p=STATE.players[STATE.id]; if(!p) return;
+    const m=MISSIONS[mission], hits=p.stats?.freezes || 0;
+    document.getElementById('assignment').textContent=`${m.label} / ${Math.min(hits,m.target)} OF ${m.target}${hits>=m.target?' · COMPLETE':''}`;
+    document.getElementById('combat-status').textContent=p.isFrozen ? `FROZEN · thaw in ${Math.ceil(p.freezeTicks/60)}s` : !p.hasBall ? (p.gatherProgress ? `PACKING ${Math.round(p.gatherProgress/45*100)}%` : 'NO SNOWBALL · HOLD PACK') : p.chargeLevel>0 ? `POWER ${Math.round(p.chargeLevel/60*100)}% · RELEASE TO THROW` : 'SNOWBALL READY';
+    document.getElementById('charge-indicator').style.strokeDashoffset=289*(1-p.chargeLevel/60);
+    btnDash.style.opacity=p.dashCooldownTimer>0?'0.45':'1';
+    btnThrow.style.opacity=p.hasBall?'1':'0.45';
+}
+socket.on('disconnect', () => {
+    resetControls(); STATE.id=null;
+    document.getElementById('network-status').textContent='Disconnected · reconnecting…';
+    document.getElementById('connection-status').textContent='Connection lost. Reconnecting…';
+    document.getElementById('start-screen').classList.remove('hidden');
+    document.getElementById('results-overlay').classList.add('hidden');
+    document.getElementById('btn-play').disabled=true;
+    document.getElementById('btn-play').textContent='RECONNECTING…';
+});
+socket.on('connect_error', () => {
+    document.getElementById('connection-status').textContent='Server unavailable or waking up. Retrying…';
+});
+setInterval(() => {
+    if(!socket.connected || document.hidden) return;
+    const start=performance.now();
+    socket.timeout(2000).emit('latency', err => {
+        const ms=Math.round(performance.now()-start);
+        document.getElementById('network-status').textContent=err?'Connection slow':`${ms} ms RTT · ${ms>150?'high latency':ms>80?'fair':'good'} · 30 snapshots/s`;
+    });
+}, 3000);
 
 gameLoop();
 </script>
 </body>
 </html>
+
