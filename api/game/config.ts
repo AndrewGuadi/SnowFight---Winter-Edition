@@ -10,8 +10,8 @@ export const GAME_CONFIG = {
   gatherTime: 45,
   ballSpeed: 12,
   snowballLife: 100,
-  tickRate: 20, // Hz (was 60, now 20 for bandwidth optimization)
-  broadcastRate: 20, // Hz
+  tickRate: 60, // Hz — restored to OG rate: per-tick physics constants are tuned for 60Hz
+  broadcastRate: 60, // Hz — stripped payloads still keep bandwidth below OG's full-state 60Hz
   matchDuration: 180, // 3 minutes in seconds
   autoThawTime: 5000, // ms
   chargeMax: 60,
