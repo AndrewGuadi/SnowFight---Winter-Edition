@@ -14,6 +14,11 @@
             user-select: none; -webkit-user-select: none; 
         }
         canvas { display: block; }
+        .view-btn { font-weight: 900; font-size: 12px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.25); color: #334155; transition: all 0.15s; }
+        .view-btn.view-active { background: #0ea5e9; color: #fff; }
+        .menu-btn { background: rgba(15, 23, 42, 0.08); color: #334155; transition: all 0.15s; }
+        .menu-btn.menu-active { background: #2563eb; color: #fff; }
+        .menu-btn:disabled { opacity: 0.35; }
         
         /* UI Elements */
         .glass-panel { background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); }
@@ -44,6 +49,22 @@
                 <p class="text-sm font-bold text-slate-400">CONNECTING TO SERVER...</p>
             </div>
 
+            <!-- Mode select: Single Player (vs AI bots) or Multiplayer (vs live humans) -->
+            <div class="flex gap-2 mb-3">
+                <button id="mode-single" onclick="selectMode('single')" class="menu-btn menu-active flex-1 py-3 rounded-xl font-black">Single Player</button>
+                <button id="mode-multi" onclick="selectMode('multi')" class="menu-btn flex-1 py-3 rounded-xl font-black">Multiplayer</button>
+            </div>
+
+            <!-- Match size: totals per side, human included. 30v30 is single-player only. -->
+            <div class="flex gap-2 mb-3">
+                <button id="size-1v1" onclick="selectSize(1, 1)" class="menu-btn menu-active flex-1 py-2 rounded-xl font-black text-sm">1v1</button>
+                <button id="size-1v5" onclick="selectSize(1, 5)" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">1v5</button>
+                <button id="size-5v5" onclick="selectSize(5, 5)" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">5v5</button>
+                <button id="size-10v10" onclick="selectSize(10, 10)" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">10v10</button>
+                <button id="size-30v30" onclick="selectSize(30, 30)" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">30v30</button>
+            </div>
+            <p id="menu-error" class="hidden text-red-500 font-bold text-sm mb-3"></p>
+
             <button id="btn-play" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
                 WAITING FOR SERVER...
             </button>
@@ -56,6 +77,12 @@
             <div class="glass-panel text-blue-600 px-5 py-2 rounded-xl flex flex-col items-center min-w-[80px] transform skew-x-[-10deg]">
                 <span class="text-[10px] uppercase font-black opacity-70 skew-x-[10deg]">Blue</span>
                 <span id="score-blue" class="text-3xl font-black skew-x-[10deg]">0</span>
+            </div>
+            <div class="glass-panel px-2 py-2 rounded-xl flex items-center gap-1 pointer-events-auto">
+                <span id="match-badge" class="font-black text-xs text-slate-700 mr-1">Single • 1v1</span>
+                <button class="view-btn view-active" onclick="setView(0)">Close</button>
+                <button class="view-btn" onclick="setView(1)">Wide</button>
+                <button class="view-btn" onclick="setView(2)">Far</button>
             </div>
             <div class="glass-panel text-red-600 px-5 py-2 rounded-xl flex flex-col items-center min-w-[80px] transform skew-x-[-10deg]">
                 <span class="text-[10px] uppercase font-black opacity-70 skew-x-[10deg]">Red</span>
@@ -113,9 +140,18 @@ const CONFIG = {
     screenShake: 0
 };
 
+// --- CAMERA VIEWS: 3 zoom levels so you can see further ---
+// Close = today's view. Wide pulls back. Far shows most of the arena.
+const VIEWS = [
+    { name: 'Close', zoom: 1 },
+    { name: 'Wide', zoom: 0.7 },
+    { name: 'Far', zoom: 0.5 }
+];
+
 // Client State
 const STATE = {
     id: null,
+    viewIndex: 0,
     worldWidth: 2000,
     worldHeight: 2000,
     camera: { x: 0, y: 0 },
@@ -353,6 +389,24 @@ socket.on('init', (data) => {
     STATE.worldWidth = data.width;
     STATE.worldHeight = data.height;
     STATE.obstacles = data.obstacles;
+    // Match badge (e.g. "Single • 5v5" / "Multi • 10v10").
+    if (data.match) {
+        const label = data.match.mode === 'single' ? 'Single' : 'Multi';
+        document.getElementById('match-badge').innerText = `${label} • ${data.match.blueCap}v${data.match.redCap}`;
+    }
+    // Join accepted: enter the game.
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('ui-layer').classList.remove('hidden');
+    document.getElementById('controls-layer').classList.remove('hidden');
+});
+
+socket.on('joinError', (data) => {
+    const err = document.getElementById('menu-error');
+    err.innerText = (data && data.message) || 'Could not join that match.';
+    err.classList.remove('hidden');
+    const btn = document.getElementById('btn-play');
+    btn.disabled = false;
+    btn.innerText = 'JOIN BATTLE';
 });
 
 socket.on('state', (serverData) => {
@@ -400,14 +454,44 @@ socket.on('hit', (data) => {
 });
 
 /**
+ * --- MODE MENU ---
+ * Preselect Single Player + 1v1 so Play works immediately.
+ * 30v30 is single-player only: hidden from multiplayer selection.
+ */
+const MENU = { mode: 'single', blue: 1, red: 1 };
+
+function selectMode(mode) {
+    MENU.mode = mode;
+    document.getElementById('mode-single').classList.toggle('menu-active', mode === 'single');
+    document.getElementById('mode-multi').classList.toggle('menu-active', mode === 'multi');
+    // 30v30 is single-player only: disable it in multiplayer, and if it
+    // was selected, fall back to 1v1.
+    const btn30 = document.getElementById('size-30v30');
+    btn30.disabled = (mode !== 'single');
+    if (mode !== 'single' && MENU.blue === 30) selectSize(1, 1);
+}
+
+function selectSize(blue, red) {
+    MENU.blue = blue; MENU.red = red;
+    const ids = { '1,1': 'size-1v1', '1,5': 'size-1v5', '5,5': 'size-5v5', '10,10': 'size-10v10', '30,30': 'size-30v30' };
+    for (const key in ids) {
+        document.getElementById(ids[key]).classList.toggle('menu-active', key === `${blue},${red}`);
+    }
+}
+
+/**
  * --- GAME LOOP ---
  */
 function joinGame() {
     Audio.init();
     Audio.sfx.ui();
-    document.getElementById('start-screen').classList.add('hidden');
-    document.getElementById('ui-layer').classList.remove('hidden');
-    document.getElementById('controls-layer').classList.remove('hidden');
+    // Emit the join request; the start screen hides only once the server
+    // answers with 'init'. A 'joinError' keeps us here with a message.
+    const btn = document.getElementById('btn-play');
+    btn.disabled = true;
+    btn.innerText = 'JOINING...';
+    document.getElementById('menu-error').classList.add('hidden');
+    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red });
 }
 
 function gameLoop() {
@@ -456,12 +540,22 @@ function gameLoop() {
     // --- RENDER ---
     ctx.clearRect(0, 0, CONFIG.viewportWidth, CONFIG.viewportHeight);
 
-    // Grid
+    // Zoom about the screen center so the player stays centered at any view.
+    const zoom = VIEWS[STATE.viewIndex].zoom;
+    const vw = CONFIG.viewportWidth, vh = CONFIG.viewportHeight;
+    const viewW = vw / zoom, viewH = vh / zoom;
+    const visX0 = cx + vw / 2 - viewW / 2, visX1 = cx + vw / 2 + viewW / 2;
+    const visY0 = cy + vh / 2 - viewH / 2, visY1 = cy + vh / 2 + viewH / 2;
+    ctx.save();
+    ctx.translate(vw / 2, vh / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-vw / 2, -vh / 2);
+
+    // Grid (aligned to world coordinates, so it stays put when zooming)
     ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.beginPath();
     const gridSize = 100;
-    const offX = -cx % gridSize; const offY = -cy % gridSize;
-    for(let x=offX; x<CONFIG.viewportWidth; x+=gridSize) { ctx.moveTo(x, 0); ctx.lineTo(x, CONFIG.viewportHeight); }
-    for(let y=offY; y<CONFIG.viewportHeight; y+=gridSize) { ctx.moveTo(0, y); ctx.lineTo(CONFIG.viewportWidth, y); }
+    for(let wx = Math.floor(visX0 / gridSize) * gridSize; wx <= visX1; wx += gridSize) { ctx.moveTo(wx - cx, visY0 - cy); ctx.lineTo(wx - cx, visY1 - cy); }
+    for(let wy = Math.floor(visY0 / gridSize) * gridSize; wy <= visY1; wy += gridSize) { ctx.moveTo(visX0 - cx, wy - cy); ctx.lineTo(visX1 - cx, wy - cy); }
     ctx.stroke();
 
     // Border
@@ -473,7 +567,7 @@ function gameLoop() {
         const fp = STATE.footprints[i];
         fp.life--;
         if(fp.life <= 0) { STATE.footprints.splice(i,1); continue; }
-        if (fp.x < cx || fp.x > cx+CONFIG.viewportWidth) continue;
+        if (fp.x < visX0 || fp.x > visX1 || fp.y < visY0 || fp.y > visY1) continue;
         ctx.save(); ctx.translate(fp.x - cx, fp.y - cy); ctx.rotate(fp.angle);
         ctx.fillStyle = `rgba(255,255,255,${fp.life/200})`;
         ctx.beginPath(); ctx.ellipse(0, -3, 3, 2, 0, 0, Math.PI*2); ctx.fill();
@@ -483,7 +577,7 @@ function gameLoop() {
 
     // Objects
     STATE.obstacles.forEach(obs => {
-        if (obs.x + obs.radius < cx || obs.x - obs.radius > cx + CONFIG.viewportWidth) return;
+        if (obs.x + obs.radius < visX0 || obs.x - obs.radius > visX1 || obs.y + obs.radius < visY0 || obs.y - obs.radius > visY1) return;
         const dx = obs.x - cx; const dy = obs.y - cy;
         ctx.fillStyle = 'rgba(0,0,30,0.15)'; ctx.beginPath(); ctx.ellipse(dx, dy + obs.radius/2, obs.radius, obs.radius*0.4, 0, 0, Math.PI*2); ctx.fill();
         
@@ -512,6 +606,8 @@ function gameLoop() {
     // Particles/Popups
     STATE.particles.forEach((p, i) => { p.update(); p.draw(cx, cy); if(p.life<=0) STATE.particles.splice(i,1); });
     STATE.popups.forEach((p, i) => { p.update(); p.draw(cx, cy); if(p.life<=0) STATE.popups.splice(i,1); });
+
+    ctx.restore();
 }
 
 /**
@@ -520,6 +616,14 @@ function gameLoop() {
 function resize() { CONFIG.viewportWidth = window.innerWidth; CONFIG.viewportHeight = window.innerHeight; canvas.width = CONFIG.viewportWidth; canvas.height = CONFIG.viewportHeight; }
 window.addEventListener('resize', resize);
 resize();
+
+// --- CAMERA VIEWS ---
+function setView(i) {
+    STATE.viewIndex = Math.max(0, Math.min(i, VIEWS.length - 1));
+    document.querySelectorAll('.view-btn').forEach((b, j) => {
+        b.classList.toggle('view-active', j === STATE.viewIndex);
+    });
+}
 
 // Joystick
 const joyZone = document.getElementById('joystick-zone');
@@ -567,6 +671,10 @@ window.addEventListener('keydown', (e)=>{
     if(k===' ') STATE.inputs.dash = true;
     if(k==='f') STATE.inputs.throwStart = true;
     if(k==='g') STATE.inputs.gather = true;
+    if(k==='1') setView(0);
+    if(k==='2') setView(1);
+    if(k==='3') setView(2);
+    if(k==='v') setView((STATE.viewIndex + 1) % VIEWS.length);
 });
 window.addEventListener('keyup', (e)=>{
     const k = e.key.toLowerCase();
@@ -577,10 +685,14 @@ window.addEventListener('keyup', (e)=>{
     if(k==='g') STATE.inputs.gather = false;
 });
 
-// Mouse Aim
+// Mouse Aim (zoom-aware: the player renders at the zoomed screen position)
 window.addEventListener('mousemove', (e) => {
     const p = STATE.players[STATE.id];
-    if(p) STATE.inputs.angle = Math.atan2(e.clientY - (p.y - STATE.camera.y), e.clientX - (p.x - STATE.camera.x));
+    if (!p) return;
+    const zoom = VIEWS[STATE.viewIndex].zoom;
+    const px = CONFIG.viewportWidth / 2 + (p.x - STATE.camera.x - CONFIG.viewportWidth / 2) * zoom;
+    const py = CONFIG.viewportHeight / 2 + (p.y - STATE.camera.y - CONFIG.viewportHeight / 2) * zoom;
+    STATE.inputs.angle = Math.atan2(e.clientY - py, e.clientX - px);
 });
 window.addEventListener('mousedown', (e) => {
     if (e.button === 0) STATE.inputs.throwStart = true;
