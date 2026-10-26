@@ -1,10 +1,14 @@
 // Game-modes tests for the Snowbrawl server (backend/server.js).
 //
 // Covers the join protocol the client depends on:
-//   client -> server: 'join' { mode: 'single' | 'multi', blue, red }
-//   server -> client: 'init' { id, team, match: { mode, blueCap, redCap }, ... }
+//   client -> server: 'join' { mode: 'single' | 'multi', blue, red,
+//                              difficulty?: 'easy' | 'normal' | 'hard' }
+//   server -> client: 'init' { id, team, match: { mode, blueCap, redCap,
+//                              difficulty }, ... }
 //                     or 'joinError' { message }
 //   server -> client: 'state' { players, snowballs } at 60 TPS, match-room only.
+// Difficulty applies to single-player bots only (multiplayer has no bots);
+// invalid or missing values default to 'normal'.
 //
 // Run: npm test   (from backend/)
 // Requires socket.io-client (devDependency). The server under test is
@@ -103,6 +107,25 @@ function playersOf(state) {
 }
 function botsOf(state) {
     return playersOf(state).filter((p) => p.isBot);
+}
+
+// Join with an arbitrary payload (for difficulty tests; join() above
+// sends only mode/blue/red).
+async function joinWith(socket, payload) {
+    return new Promise((resolve, reject) => {
+        const to = setTimeout(() => reject(new Error('join timed out')), 5000);
+        const done = (kind) => (data) => {
+            clearTimeout(to);
+            socket.off('init', onInit);
+            socket.off('joinError', onErr);
+            resolve({ kind, data });
+        };
+        const onInit = done('init');
+        const onErr = done('joinError');
+        socket.on('init', onInit);
+        socket.on('joinError', onErr);
+        socket.emit('join', payload);
+    });
 }
 
 // --- lifecycle -------------------------------------------------------------
@@ -345,5 +368,183 @@ describe('validation and match hygiene', () => {
         const box = trackState(s);
         const st = await waitForState(box, (stt) => playersOf(stt).length === 2, '2 players after re-join');
         assert.equal(botsOf(st).length, 1);
+    });
+});
+
+describe('bot difficulty, snowball lob, and hit bonus', () => {
+    test('difficulty echoes in init; invalid/missing values default to normal', async (t) => {
+        const cases = [
+            [{ mode: 'single', blue: 1, red: 1, difficulty: 'hard' }, 'hard'],
+            [{ mode: 'single', blue: 1, red: 1, difficulty: 'easy' }, 'easy'],
+            [{ mode: 'single', blue: 1, red: 1, difficulty: 'bogus' }, 'normal'],
+            [{ mode: 'single', blue: 1, red: 1 }, 'normal'],
+            [{ mode: 'multi', blue: 1, red: 1, difficulty: 'hard' }, 'normal'],
+        ];
+        for (const [payload, expected] of cases) {
+            const s = await connectClient();
+            t.after(() => s.disconnect());
+            const res = await joinWith(s, payload);
+            assert.equal(res.kind, 'init');
+            assert.equal(res.data.match.difficulty, expected, `difficulty for ${JSON.stringify(payload)}`);
+        }
+    });
+
+    test('easy and hard bots still throw', async (t) => {
+        for (const difficulty of ['easy', 'hard']) {
+            const s = await connectClient();
+            t.after(() => s.disconnect());
+            await joinWith(s, { mode: 'single', blue: 1, red: 1, difficulty });
+            const box = trackState(s);
+            const first = await waitForState(box, (st) => playersOf(st).length === 2, '2 players');
+            const botId = botsOf(first)[0].id;
+            // Run east toward the bot so it gets in range quickly.
+            const drive = setInterval(() => {
+                s.emit('input', { moveX: 1, moveY: 0, angle: 0, dash: false, gather: false });
+            }, 50);
+            const state = await waitForState(
+                box,
+                (st) => (st.snowballs || []).some((b) => b.ownerId === botId),
+                `${difficulty} bot snowball`,
+                25000,
+            );
+            clearInterval(drive);
+            assert.ok((state.snowballs || []).some((b) => b.ownerId === botId));
+        }
+    });
+
+    test('snowball lob peaks above the old ~28px and lands within ~0.9s', async (t) => {
+        const s = await connectClient();
+        t.after(() => s.disconnect());
+        await join(s, 'single', 1, 1);
+        const box = trackState(s);
+        await waitForState(box, (st) => playersOf(st).length === 2, '2 players');
+        let maxZ = 0;
+        const onState = (st) => {
+            for (const b of st.snowballs || []) {
+                if (b.z > maxZ) maxZ = b.z;
+            }
+        };
+        s.on('state', onState);
+        t.after(() => s.off('state', onState));
+        // Throw immediately: the human spawns holding a ball. The bot is
+        // ~2600px away and cannot throw within this test's window.
+        s.emit('input', { moveX: 0, moveY: 0, angle: 0, dash: false, gather: false, throwStart: true, throwRelease: false });
+        await sleep(50);
+        s.emit('input', { moveX: 0, moveY: 0, angle: 0, dash: false, gather: false, throwStart: false, throwRelease: true });
+        await waitForState(box, () => maxZ > 30, 'lob above 30px', 3000);
+        assert.ok(maxZ > 30, `lob peak ${maxZ} should exceed the old ~28px peak`);
+        await sleep(900);
+        assert.equal((box.latest.snowballs || []).length, 0, 'ball should have landed');
+    });
+
+    test('single-player: human graze throw at ~25px hits the bot (hit bonus)', async (t) => {
+        const s = await connectClient();
+        t.after(() => s.disconnect());
+        await join(s, 'single', 1, 1);
+        const box = trackState(s);
+        const first = await waitForState(box, (st) => playersOf(st).length === 2, '2 players');
+        const botId = botsOf(first)[0].id;
+        // The human stands still; the bot closes in on its own. A 25px
+        // graze hits only with the +6px single-player bonus (human throw
+        // threshold ~26px) and misses at the original ~20px radius.
+        const deadline = Date.now() + 45000;
+        let threw = false;
+        while (Date.now() < deadline) {
+            const st = box.latest;
+            const me = st && st.players[s.id];
+            const bot = st && st.players[botId];
+            if (!me || !bot) { await sleep(100); continue; }
+            // Re-gather after a previous attempt's throw.
+            if (!me.hasBall) {
+                const g = setInterval(() => {
+                    s.emit('input', { moveX: 0, moveY: 0, angle: 0, dash: false, gather: true });
+                }, 50);
+                await sleep(1100);
+                clearInterval(g);
+                continue;
+            }
+            // Frozen: wait out the 5s thaw, then retry.
+            if (me.isFrozen) { await sleep(1000); continue; }
+            const D = Math.hypot(bot.x - me.x, bot.y - me.y);
+            // Attempt only with a stationary, charging bot at grazeable range.
+            if (!(bot.hasBall && bot.chargeLevel > 0 && D >= 60 && D <= 250)) {
+                await sleep(100);
+                continue;
+            }
+            const base = Math.atan2(bot.y - me.y, bot.x - me.x);
+            const aim = base + Math.asin(25 / D);
+            s.emit('input', { moveX: 0, moveY: 0, angle: aim, dash: false, gather: false, throwStart: true, throwRelease: false });
+            await sleep(50);
+            s.emit('input', { moveX: 0, moveY: 0, angle: aim, dash: false, gather: false, throwStart: false, throwRelease: true });
+            threw = true;
+            const hitDeadline = Date.now() + 2000;
+            let hit = false;
+            while (Date.now() < hitDeadline) {
+                const cur = box.latest;
+                if (cur && cur.players[botId] && cur.players[botId].isFrozen) { hit = true; break; }
+                await sleep(50);
+            }
+            if (hit) return; // bonus confirmed
+            await sleep(200);
+        }
+        assert.ok(threw, 'never got a clean graze attempt in 45s');
+        assert.fail('bot never froze from a 25px graze throw (expected hit with +6px bonus)');
+    });
+
+    test('multiplayer: same 25px graze throw misses (no bonus)', async (t) => {
+        const a = await connectClient();
+        const b = await connectClient();
+        t.after(() => {
+            a.disconnect();
+            b.disconnect();
+        });
+        await join(a, 'multi', 1, 1);
+        await join(b, 'multi', 1, 1);
+        const boxA = trackState(a);
+        const boxB = trackState(b);
+        await waitForState(boxA, (st) => playersOf(st).length === 2, '2 players');
+        // B stands still; drive A into graze range, then throw.
+        const deadline = Date.now() + 20000;
+        let threw = false;
+        while (Date.now() < deadline) {
+            const st = boxA.latest;
+            const me = st && st.players[a.id];
+            const target = st && st.players[b.id];
+            if (!me || !target) { await sleep(100); continue; }
+            const D = Math.hypot(target.x - me.x, target.y - me.y);
+            if (D > 250 || D < 60) {
+                const dir = D > 250 ? 1 : -1;
+                const move = setInterval(() => {
+                    const cur = boxA.latest;
+                    const m = cur && cur.players[a.id];
+                    const tg = cur && cur.players[b.id];
+                    if (!m || !tg) return;
+                    const d = Math.hypot(tg.x - m.x, tg.y - m.y) || 1;
+                    a.emit('input', { moveX: dir * (tg.x - m.x) / d, moveY: dir * (tg.y - m.y) / d, angle: 0, dash: false, gather: false });
+                }, 50);
+                await sleep(500);
+                clearInterval(move);
+                continue;
+            }
+            const base = Math.atan2(target.y - me.y, target.x - me.x);
+            const aim = base + Math.asin(25 / D);
+            a.emit('input', { moveX: 0, moveY: 0, angle: aim, dash: false, gather: false, throwStart: true, throwRelease: false });
+            await sleep(50);
+            a.emit('input', { moveX: 0, moveY: 0, angle: aim, dash: false, gather: false, throwStart: false, throwRelease: true });
+            threw = true;
+            const seenDeadline = Date.now() + 2000;
+            let sawBall = false;
+            while (Date.now() < seenDeadline) {
+                const cur = boxA.latest;
+                if (cur && (cur.snowballs || []).some((bb) => bb.ownerId === a.id)) { sawBall = true; break; }
+                await sleep(50);
+            }
+            assert.ok(sawBall, 'throw produced no ball in state');
+            await sleep(1000);
+            const after = boxB.latest;
+            assert.ok(after && after.players[b.id] && !after.players[b.id].isFrozen, 'B froze from a 25px graze in multi (bonus must not apply)');
+            return;
+        }
+        assert.ok(threw, 'never got a graze attempt in 20s');
     });
 });

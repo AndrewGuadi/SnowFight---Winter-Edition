@@ -63,6 +63,13 @@
                 <button id="size-10v10" onclick="selectSize(10, 10)" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">10v10</button>
                 <button id="size-30v30" onclick="selectSize(30, 30)" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">30v30</button>
             </div>
+
+            <!-- Bot difficulty: single-player only; hidden in multiplayer. -->
+            <div id="difficulty-row" class="flex gap-2 mb-3">
+                <button id="diff-easy" onclick="selectDifficulty('easy')" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">Easy</button>
+                <button id="diff-normal" onclick="selectDifficulty('normal')" class="menu-btn menu-active flex-1 py-2 rounded-xl font-black text-sm">Normal</button>
+                <button id="diff-hard" onclick="selectDifficulty('hard')" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">Hard</button>
+            </div>
             <p id="menu-error" class="hidden text-red-500 font-bold text-sm mb-3"></p>
 
             <button id="btn-play" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
@@ -389,10 +396,13 @@ socket.on('init', (data) => {
     STATE.worldWidth = data.width;
     STATE.worldHeight = data.height;
     STATE.obstacles = data.obstacles;
-    // Match badge (e.g. "Single • 5v5" / "Multi • 10v10").
+    // Match badge (e.g. "Single • 5v5" / "Single • 5v5 • Hard" / "Multi • 10v10").
+    // Difficulty shows only for non-normal single-player (normal is the default).
     if (data.match) {
         const label = data.match.mode === 'single' ? 'Single' : 'Multi';
-        document.getElementById('match-badge').innerText = `${label} • ${data.match.blueCap}v${data.match.redCap}`;
+        const diff = (data.match.mode === 'single' && data.match.difficulty && data.match.difficulty !== 'normal')
+            ? ` • ${data.match.difficulty[0].toUpperCase()}${data.match.difficulty.slice(1)}` : '';
+        document.getElementById('match-badge').innerText = `${label} • ${data.match.blueCap}v${data.match.redCap}${diff}`;
     }
     // Join accepted: enter the game.
     document.getElementById('start-screen').classList.add('hidden');
@@ -458,12 +468,14 @@ socket.on('hit', (data) => {
  * Preselect Single Player + 1v1 so Play works immediately.
  * 30v30 is single-player only: hidden from multiplayer selection.
  */
-const MENU = { mode: 'single', blue: 1, red: 1 };
+const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal' };
 
 function selectMode(mode) {
     MENU.mode = mode;
     document.getElementById('mode-single').classList.toggle('menu-active', mode === 'single');
     document.getElementById('mode-multi').classList.toggle('menu-active', mode === 'multi');
+    // Bot difficulty is single-player only: hide the row in multiplayer.
+    document.getElementById('difficulty-row').style.display = (mode === 'single') ? 'flex' : 'none';
     // 30v30 is single-player only: disable it in multiplayer, and if it
     // was selected, fall back to 1v1.
     const btn30 = document.getElementById('size-30v30');
@@ -479,6 +491,14 @@ function selectSize(blue, red) {
     }
 }
 
+function selectDifficulty(difficulty) {
+    MENU.difficulty = difficulty;
+    const ids = { 'easy': 'diff-easy', 'normal': 'diff-normal', 'hard': 'diff-hard' };
+    for (const key in ids) {
+        document.getElementById(ids[key]).classList.toggle('menu-active', key === difficulty);
+    }
+}
+
 /**
  * --- GAME LOOP ---
  */
@@ -491,7 +511,7 @@ function joinGame() {
     btn.disabled = true;
     btn.innerText = 'JOINING...';
     document.getElementById('menu-error').classList.add('hidden');
-    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red });
+    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty });
 }
 
 function gameLoop() {
