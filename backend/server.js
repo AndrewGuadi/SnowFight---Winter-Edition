@@ -66,6 +66,16 @@ const SINGLE_HIT_BONUS = 6;
 function difficultyValid(d) {
     return (d === 'easy' || d === 'normal' || d === 'hard') ? d : 'normal';
 }
+
+// Private-room code for multiplayer: friends who enter the same code
+// land in the same match. Normalized to 1-8 uppercase alphanumerics;
+// anything else (empty, symbols-only) means "open match". Single-player
+// ignores room codes entirely.
+function sanitizeRoomCode(raw) {
+    if (raw === null || raw === undefined) return null;
+    const code = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    return code.length > 0 ? code : null;
+}
 function difficultyOf(match) {
     return DIFFICULTY[match.difficulty] || DIFFICULTY.normal;
 }
@@ -90,7 +100,7 @@ function makeObstacles() {
     return obstacles;
 }
 
-function createMatch(mode, blueCap, redCap, difficulty) {
+function createMatch(mode, blueCap, redCap, difficulty, roomCode) {
     const id = `match-${Date.now().toString(36)}-${++matchCounter}`;
     const match = {
         id,
@@ -98,6 +108,9 @@ function createMatch(mode, blueCap, redCap, difficulty) {
         blueCap,
         redCap,
         difficulty: difficulty || 'normal',
+        // Private-room code (multiplayer only); null = open match that
+        // any player with the same caps can join.
+        roomCode: mode === 'multi' ? (sanitizeRoomCode(roomCode) || null) : null,
         // Timed-match state: the clock starts once at least 2 players are
         // present; at 3 minutes the match ends and a winner is declared
         // from the freeze score (most freezes inflicted). A tie at the
@@ -138,10 +151,29 @@ function findMultiMatch(blueCap, redCap) {
     for (const match of matches.values()) {
         if (match.mode !== 'multi') continue;
         if (match.ended) continue;
+        if (match.roomCode) continue; // private rooms are found by code, not by chance
         if (match.blueCap !== blueCap || match.redCap !== redCap) continue;
         if (countTeam(match, 'blue') < blueCap || countTeam(match, 'red') < redCap) return match;
     }
     return null;
+}
+
+// The (single) live multi match carrying this private-room code and
+// these caps, whether or not it still has an open slot. Ended matches
+// never match: a finished room's code is free to start a fresh match.
+function findRoomMatch(roomCode, blueCap, redCap) {
+    for (const match of matches.values()) {
+        if (match.mode !== 'multi') continue;
+        if (match.ended) continue;
+        if (match.roomCode !== roomCode) continue;
+        if (match.blueCap !== blueCap || match.redCap !== redCap) continue;
+        return match;
+    }
+    return null;
+}
+
+function roomHasOpenSlot(match) {
+    return countTeam(match, 'blue') < match.blueCap || countTeam(match, 'red') < match.redCap;
 }
 
 // --- PLAYER CLASS ---
@@ -601,7 +633,8 @@ function leaveMatch(socket) {
 
 // --- CONNECTION HANDLING ---
 // NOTE: unlike the original server, connecting does NOT create a player.
-// The client must send 'join' {mode, blue, red} first.
+// The client must send 'join' {mode, blue, red} first (multiplayer may
+// also send an optional 'room' code to share a private match).
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
@@ -615,6 +648,8 @@ io.on('connection', (socket) => {
         // normal (multiplayer has no bots, so it is ignored there).
         const difficulty = difficultyValid(data && data.difficulty);
         const recruit = classId(data && data.classId);
+        // Private-room code: multiplayer only; ignored in single-player.
+        const room = mode === 'multi' ? sanitizeRoomCode(data && data.room) : null;
 
         if ((mode !== 'single' && mode !== 'multi') || !sizeAllowed(mode, blue, red)) {
             socket.emit('joinError', { message: 'Invalid mode or match size.' });
@@ -632,21 +667,39 @@ io.on('connection', (socket) => {
             match.players[socket.id] = new ServerPlayer(socket.id, 'blue', false, recruit);
             for (let i = 0; i < blue - 1; i++) addBot(match, 'blue');
             for (let i = 0; i < red; i++) addBot(match, 'red');
+        } else if (room) {
+            // Private room: friends with the same code share one match.
+            // A full room rejects late joiners rather than silently
+            // splitting them into a second match under the same code.
+            match = findRoomMatch(room, blue, red);
+            if (match && !roomHasOpenSlot(match)) {
+                socket.emit('joinError', { message: 'Room is full — try another code.' });
+                return;
+            }
+            if (!match) {
+                match = createMatch('multi', blue, red, undefined, room);
+            }
         } else {
-            // Multiplayer: humans only, never bots. Join the earliest match
-            // with the same caps and an open slot; otherwise create one.
+            // Multiplayer: humans only, never bots. Join the earliest
+            // OPEN match with the same caps and an open slot; otherwise
+            // create one. Private rooms are never joined by chance.
             match = findMultiMatch(blue, red);
             if (!match) {
                 match = createMatch('multi', blue, red);
             }
+        }
+        if (mode === 'multi') {
+            // Shared team assignment for open and private matches alike:
+            // fill the emptier side first, never overfill a team.
             const blues = countTeam(match, 'blue');
             const reds = countTeam(match, 'red');
             let team;
             if (blues <= reds && blues < blue) team = 'blue';
             else if (reds < red) team = 'red';
             else {
-                // Both teams full (should not happen via findMultiMatch):
-                // start a fresh match rather than overfilling.
+                // Both teams full (should not happen: open matches are
+                // only picked with a slot, rooms reject when full):
+                // start a fresh open match rather than overfilling.
                 match = createMatch('multi', blue, red);
                 team = 'blue';
             }
@@ -666,7 +719,7 @@ io.on('connection', (socket) => {
             team: match.players[socket.id].team,
             classId: recruit,
             classes: CLASSES,
-            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty }
+            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty, roomCode: match.roomCode || null }
         });
     });
 
