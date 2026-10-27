@@ -171,7 +171,7 @@ class ServerPlayer {
         // Game State
         this.isFrozen = false;
         this.freezeTicks = 0;
-        this.stats = { throws: 0, freezes: 0, dashes: 0 };
+        this.stats = { throws: 0, freezes: 0, dashes: 0, rescues: 0 };
         this.lastInputAt = Date.now();
         this.hasBall = true;
         this.chargeLevel = 0;
@@ -487,6 +487,28 @@ function tickMatch(match) {
         const p = match.players[id];
         if (p.chargeLevel > 0 && p.chargeLevel < 60) p.chargeLevel++;
         p.update(match);
+    }
+
+    // 2b. Teammate rescue: an unfrozen player touching a frozen teammate
+    // thaws them at once (no waiting out the 5s freeze). This is the
+    // teamplay hook: staying near a frozen teammate, or running to them,
+    // brings them straight back into the fight. Score is untouched —
+    // the freeze already counted when it landed.
+    for (const id in match.players) {
+        const r = match.players[id];
+        if (r.isFrozen) continue;
+        for (const oid in match.players) {
+            const p = match.players[oid];
+            if (p === r || p.team !== r.team || !p.isFrozen) continue;
+            if (Math.hypot(p.x - r.x, p.y - r.y) < r.radius + p.radius) {
+                p.isFrozen = false;
+                p.freezeTicks = 0;
+                p.chargeLevel = 0;
+                r.stats.rescues++;
+                match.emit('effect', { type: 'thaw', x: p.x, y: p.y, id: p.id, rescuerId: r.id });
+                break;
+            }
+        }
     }
 
     // 3. Update Snowballs
