@@ -454,7 +454,7 @@ socket.on('state', (serverData) => {
     // Match clock + freeze score in the badge (e.g. "Single • 5v5 • 2:31 • 5–3").
     if (serverData.match && STATE.badgeBase) {
         const m = serverData.match;
-        const clock = m.timeLeft === null ? '--:--'
+        const clock = m.overtime ? 'OT' : m.timeLeft === null ? '--:--'
             : `${Math.floor(m.timeLeft / 60)}:${String(m.timeLeft % 60).padStart(2, '0')}`;
         const text = `${STATE.badgeBase} • ${clock} • ${m.score.blue}–${m.score.red}`;
         const badge = document.getElementById('match-badge');
