@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const { sanitizeInput, segmentHit } = require('./gameplay');
+const { CLASSES, classId, shotPattern, canBuild } = require('./classes');
 const app = express();
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
@@ -112,6 +113,9 @@ function createMatch(mode, blueCap, redCap, difficulty) {
         winner: null,
         players: {},
         snowballs: [],
+        structures: [],
+        structureSerial: 0,
+        classRoster: false,
         obstacles: makeObstacles(),
         // All match traffic is scoped to the room — never the global io.
         emit(event, data) { io.to(id).emit(event, data); },
@@ -142,11 +146,14 @@ function findMultiMatch(blueCap, redCap) {
 
 // --- PLAYER CLASS ---
 class ServerPlayer {
-    constructor(id, team, isBot) {
+    constructor(id, team, isBot, recruit = 'classic') {
         this.id = id;
         this.team = team;
         this.isBot = !!isBot;
-        this.radius = 14;
+        this.classId = classId(recruit);
+        this.radius = CLASSES[this.classId].radius;
+        this.abilityCooldown = 0;
+        this.guardTicks = 0;
 
         // Cosmetics (Synced so everyone sees the same)
         this.skinColor = ['#ffdbac', '#f1c27d', '#e0ac69', '#8d5524', '#c68642'][Math.floor(Math.random() * 5)];
@@ -179,6 +186,8 @@ class ServerPlayer {
     }
 
     update(match) {
+        if (this.abilityCooldown > 0) this.abilityCooldown--;
+        if (this.guardTicks > 0) this.guardTicks--;
         if (!this.isBot && Date.now() - this.lastInputAt > 500) {
             this.inputs.moveX = this.inputs.moveY = 0;
             this.inputs.dash = this.inputs.gather = false;
@@ -198,8 +207,8 @@ class ServerPlayer {
             this.dashTimer = CONFIG.dashDuration;
             this.dashCooldownTimer = CONFIG.dashCooldown;
             const angle = Math.atan2(this.inputs.moveY, this.inputs.moveX);
-            this.vx = Math.cos(angle) * CONFIG.dashSpeed;
-            this.vy = Math.sin(angle) * CONFIG.dashSpeed;
+            this.vx = Math.cos(angle) * CONFIG.dashSpeed * CLASSES[this.classId].speed;
+            this.vy = Math.sin(angle) * CONFIG.dashSpeed * CLASSES[this.classId].speed;
             // Notify clients to play sound/effect (match room only)
             match.emit('effect', { type: 'dash', x: this.x, y: this.y, id: this.id });
         }
@@ -219,7 +228,7 @@ class ServerPlayer {
                 this.vx *= 0.8;
                 this.vy *= 0.8;
                 this.gatherProgress++;
-                if (this.gatherProgress >= CONFIG.gatherTime) {
+                if (this.gatherProgress >= CLASSES[this.classId].gather) {
                     this.hasBall = true;
                     this.gatherProgress = 0;
                     match.emit('effect', { type: 'reload', x: this.x, y: this.y, id: this.id });
@@ -235,7 +244,7 @@ class ServerPlayer {
 
             // Cap Speed (bots scale by difficulty; humans use CONFIG.maxSpeed).
             const speed = Math.hypot(this.vx, this.vy);
-            const cap = this.isBot ? CONFIG.maxSpeed * difficultyOf(match).speedMul : CONFIG.maxSpeed;
+            const cap = CONFIG.maxSpeed * CLASSES[this.classId].speed * (this.isBot ? difficultyOf(match).speedMul : 1);
             if (speed > cap) {
                 this.vx = (this.vx / speed) * cap;
                 this.vy = (this.vy / speed) * cap;
@@ -252,7 +261,7 @@ class ServerPlayer {
         if (this.y > CONFIG.worldHeight) this.y = CONFIG.worldHeight;
 
         // 4. Obstacle Collision
-        match.obstacles.forEach(obs => {
+        [...match.obstacles, ...match.structures].forEach(obs => {
             const dx = this.x - obs.x;
             const dy = this.y - obs.y;
             const dist = Math.hypot(dx, dy);
@@ -301,6 +310,35 @@ class ServerSnowball {
     }
 }
 
+// All attacks and abilities use the same authoritative path for humans and bots.
+function fireSnowball(p, match, cannon=false) {
+    if (match.ended || p.isFrozen || !p.hasBall) return false;
+    for (const shot of shotPattern(p.classId,p.chargeLevel,cannon)) {
+        const ball=new ServerSnowball(p.x,p.y,p.inputs.angle+shot.angle,shot.speed,p.id,p.team,p.chargeLevel);
+        ball.radius=shot.radius; ball.kind=shot.kind;
+        match.snowballs.push(ball);
+    }
+    p.stats.throws++; p.hasBall=false; p.chargeLevel=0;
+    match.emit('effect',{type:cannon?'cannon':'throw',x:p.x,y:p.y,id:p.id});
+    return true;
+}
+function useAbility(p,match) {
+    if (match.ended || p.isFrozen || p.abilityCooldown>0 || p.classId==='classic') return false;
+    if (p.classId==='glacier') {
+        p.guardTicks=120; // one absorbed hit, or expires after two seconds
+    } else if (p.classId==='snowbug') {
+        if (!fireSnowball(p,match,true)) return false;
+    } else {
+        const x=p.x+Math.cos(p.inputs.angle)*90, y=p.y+Math.sin(p.inputs.angle)*90;
+        if (match.structures.length>=20 || match.structures.some(o=>o.ownerId===p.id) ||
+            !canBuild(x,y,CONFIG,[...match.obstacles,...match.structures],match.players)) return false;
+        match.structures.push({id:++match.structureSerial,ownerId:p.id,team:p.team,x,y,radius:38,hp:3,life:480,type:'igloo'});
+    }
+    p.abilityCooldown=CLASSES[p.classId].cooldown;
+    match.emit('effect',{type:p.classId==='glacier'?'guard':p.classId==='frostweaver'?'build':'ability',x:p.x,y:p.y,id:p.id});
+    return true;
+}
+
 // --- BOT AI ---
 // Runs once per tick per bot, before player updates. Reuses the same physics
 // and charge/release mechanics as human players. Behavior scales with the
@@ -332,6 +370,8 @@ function computeBotInput(bot, match) {
     const dist = Math.hypot(dx, dy) || 1;
     const nx = dx / dist, ny = dy / dist;
 
+    if (match.classRoster && best < 550 && match.tick % 45 === 0) useAbility(bot,match);
+
     if (!bot.hasBall) {
         // Gather (drift toward the enemy while gathering).
         bot.inputs.moveX = nx; bot.inputs.moveY = ny;
@@ -343,7 +383,7 @@ function computeBotInput(bot, match) {
 
     bot.inputs.gather = false;
     bot.inputs.angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * diff.aimNoise;
-    if (dist <= diff.throwRange) {
+    if (dist <= diff.throwRange * (bot.classId==='frostweaver'?1.25:bot.classId==='glacier'?0.85:1)) {
         // In range: hold still and charge. Release is handled in tickMatch
         // once chargeLevel reaches the difficulty's chargeAt ticks.
         bot.inputs.moveX = 0; bot.inputs.moveY = 0;
@@ -376,6 +416,7 @@ function broadcastState(match) {
     match.emitVolatile('state', {
         players: match.players,
         snowballs: match.snowballs,
+        structures: match.structures,
         tick: match.tick,
         serverTime: Date.now(),
         match: matchStateInfo(match)
@@ -429,20 +470,15 @@ function tickMatch(match) {
         }
     }
 
+    match.structures = match.structures.filter(o => --o.life > 0 && o.hp > 0);
+
     // 1. Bot AI + bot throw releases (charge reaches difficulty's chargeAt).
     for (const id in match.players) {
         const p = match.players[id];
         if (!p.isBot) continue;
         computeBotInput(p, match);
         if (p.hasBall && !p.isFrozen && p.chargeLevel >= difficultyOf(match).chargeAt) {
-            const speed = CONFIG.ballSpeed + (p.chargeLevel / 5);
-            match.snowballs.push(new ServerSnowball(
-                p.x, p.y, p.inputs.angle, speed, p.id, p.team, p.chargeLevel
-            ));
-            p.stats.throws++;
-            p.hasBall = false;
-            p.chargeLevel = 0;
-            match.emit('effect', { type: 'throw', x: p.x, y: p.y });
+            fireSnowball(p,match);
         }
     }
 
@@ -463,7 +499,8 @@ function tickMatch(match) {
         if (!ball.active) return;
         // Resolve the first impact along the flight segment, including cover.
         let impact = null, first = Infinity;
-        for (const obs of match.obstacles) {
+        for (const obs of [...match.obstacles,...match.structures]) {
+            if (obs.hp !== undefined && obs.hp <= 0) continue;
             const t = segmentHit(fromX, fromY, ball.x, ball.y, obs.x, obs.y, obs.radius + ball.radius);
             if (t !== null && t < first) { first = t; impact = { obstacle: obs }; }
         }
@@ -482,6 +519,11 @@ function tickMatch(match) {
             ball.active = false;
             if (impact.player) {
                 const p = impact.player;
+                if (p.guardTicks>0) {
+                    p.guardTicks=0;
+                    match.emit('effect',{type:'guard_hit',x:p.x,y:p.y,id:p.id});
+                    return;
+                }
                 p.isFrozen = true;
                 p.freezeTicks = 300;
                 p.chargeLevel = 0;
@@ -495,11 +537,16 @@ function tickMatch(match) {
                 // (the score just moved, so endMatch names that team).
                 if (match.overtime) endMatch(match);
             } else {
+                if (impact.obstacle.hp !== undefined) {
+                    impact.obstacle.hp--;
+                    if (impact.obstacle.hp<=0) match.emit('effect',{type:'shatter',x:impact.obstacle.x,y:impact.obstacle.y});
+                }
                 match.emit('effect', { type: 'obs_hit', x: fromX + (ball.x-fromX)*first, y: fromY + (ball.y-fromY)*first });
             }
         }
     });
 
+    match.structures = match.structures.filter(o=>o.hp>0);
     match.snowballs = match.snowballs.filter(b => b.active);
 
     // 4. Broadcast State (match room only).
@@ -507,14 +554,12 @@ function tickMatch(match) {
 }
 
 // --- SERVER LOOP (60 TPS, iterates all matches) ---
-setInterval(() => {
-    for (const match of matches.values()) tickMatch(match);
-}, 1000 / 60);
+
 
 // --- MATCH MEMBERSHIP HELPERS ---
 function addBot(match, team) {
     const id = `bot-${match.id}-${++botCounter}`;
-    match.players[id] = new ServerPlayer(id, team, true);
+    match.players[id] = new ServerPlayer(id, team, true, match.classRoster ? ['glacier','snowbug','frostweaver'][botCounter % 3] : 'classic');
     return match.players[id];
 }
 
@@ -526,6 +571,7 @@ function leaveMatch(socket) {
     socket.data.matchId = null;
     if (match) {
         delete match.players[socket.id];
+        match.structures = match.structures.filter(o=>o.ownerId!==socket.id);
         // No humans left: delete the whole match (bots go with it).
         if (!hasHumans(match)) matches.delete(matchId);
     }
@@ -546,6 +592,7 @@ io.on('connection', (socket) => {
         // Bot difficulty: single-player only; anything else defaults to
         // normal (multiplayer has no bots, so it is ignored there).
         const difficulty = difficultyValid(data && data.difficulty);
+        const recruit = classId(data && data.classId);
 
         if ((mode !== 'single' && mode !== 'multi') || !sizeAllowed(mode, blue, red)) {
             socket.emit('joinError', { message: 'Invalid mode or match size.' });
@@ -559,7 +606,8 @@ io.on('connection', (socket) => {
         if (mode === 'single') {
             // Human on blue; bots fill every remaining slot on both teams.
             match = createMatch('single', blue, red, difficulty);
-            match.players[socket.id] = new ServerPlayer(socket.id, 'blue', false);
+            match.classRoster = recruit !== 'classic';
+            match.players[socket.id] = new ServerPlayer(socket.id, 'blue', false, recruit);
             for (let i = 0; i < blue - 1; i++) addBot(match, 'blue');
             for (let i = 0; i < red; i++) addBot(match, 'red');
         } else {
@@ -580,7 +628,7 @@ io.on('connection', (socket) => {
                 match = createMatch('multi', blue, red);
                 team = 'blue';
             }
-            match.players[socket.id] = new ServerPlayer(socket.id, team, false);
+            match.players[socket.id] = new ServerPlayer(socket.id, team, false, recruit);
         }
 
         socket.join(match.id);
@@ -594,6 +642,8 @@ io.on('connection', (socket) => {
             height: CONFIG.worldHeight,
             obstacles: match.obstacles,
             team: match.players[socket.id].team,
+            classId: recruit,
+            classes: CLASSES,
             match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty }
         });
     });
@@ -616,6 +666,10 @@ io.on('connection', (socket) => {
 
         if (data.cancelCharge) p.chargeLevel = 0;
 
+        if (data.ability) {
+            if (!useAbility(p,match)) socket.emit('abilityDenied',{reason:p.isFrozen?'Frozen':p.abilityCooldown>0?'Recharging':p.classId==='snowbug'?'Pack a snowball first':'Find open ground ahead'});
+        }
+
         // Charge
         if (data.throwStart && p.hasBall && !p.isFrozen && !p.chargeLevel) {
             p.chargeLevel = 1;
@@ -623,15 +677,7 @@ io.on('connection', (socket) => {
 
         // Release Throw
         if (data.throwRelease && p.hasBall && !p.isFrozen) {
-            const speed = CONFIG.ballSpeed + (p.chargeLevel / 5);
-            match.snowballs.push(new ServerSnowball(
-                p.x, p.y, data.angle, speed, p.id, p.team, p.chargeLevel
-            ));
-
-            p.stats.throws++;
-            p.hasBall = false;
-            p.chargeLevel = 0;
-            match.emit('effect', { type: 'throw', x: p.x, y: p.y });
+            fireSnowball(p,match);
         }
     });
 
@@ -641,8 +687,11 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-    console.log(`Snowbrawl Server running on port ${PORT}`);
-});
+if (require.main === module) {
+    setInterval(() => { for (const match of matches.values()) tickMatch(match); },1000/60);
+    const PORT = process.env.PORT || 3000;
+    http.listen(PORT, () => console.log(`Snowbrawl Server running on port ${PORT}`));
+}
+module.exports = { ServerPlayer, ServerSnowball, createMatch, tickMatch, fireSnowball, useAbility, matches };
+
 
