@@ -38,6 +38,12 @@ function sizeAllowed(mode, blue, red) {
 // 3 minutes at 60 TPS. Overridable via env for tests.
 const MATCH_DURATION_TICKS = Number(process.env.MATCH_DURATION_TICKS) || 10800;
 
+// --- SUDDEN-DEATH OVERTIME ---
+// A tie at the buzzer does not end in a draw: overtime starts and the
+// next freeze wins at once. Capped (then it is a draw), so a match can
+// never run forever. Overridable via env for tests.
+const OVERTIME_CAP_TICKS = Number(process.env.OVERTIME_CAP_TICKS) || 3600;
+
 // --- BOT DIFFICULTY LEVELS (single-player only) ---
 // Normal reproduces the original bot exactly. Easy/Hard tune aim noise,
 // charge time, throw range, dash frequency, and top speed.
@@ -88,10 +94,14 @@ function createMatch(mode, blueCap, redCap, difficulty) {
         difficulty: difficulty || 'normal',
         // Timed-match state: the clock starts once at least 2 players are
         // present; at 3 minutes the match ends and a winner is declared
-        // from the freeze score (most freezes inflicted; tie = draw).
+        // from the freeze score (most freezes inflicted). A tie at the
+        // buzzer starts sudden-death overtime instead: the next freeze
+        // wins, capped at OVERTIME_CAP_TICKS (then it is a draw).
         score: { blue: 0, red: 0 },
         timerStarted: false,
         timerTicks: 0,
+        overtime: false,
+        overtimeTicks: 0,
         ended: false,
         winner: null,
         players: {},
@@ -335,6 +345,7 @@ function matchStateInfo(match) {
             ? Math.max(0, Math.ceil((MATCH_DURATION_TICKS - match.timerTicks) / 60))
             : null,
         score: match.score,
+        overtime: match.overtime,
         ended: match.ended,
         winner: match.winner
     };
@@ -370,11 +381,27 @@ function tickMatch(match) {
         match.timerStarted = true;
     }
     if (match.timerStarted) {
-        match.timerTicks++;
-        if (match.timerTicks >= MATCH_DURATION_TICKS) {
-            endMatch(match);
-            broadcastState(match);
-            return;
+        if (!match.overtime) {
+            match.timerTicks++;
+            if (match.timerTicks >= MATCH_DURATION_TICKS) {
+                if (match.score.blue === match.score.red) {
+                    // Tie at the buzzer: sudden death, not a draw.
+                    // The tick continues below so play resumes at once.
+                    match.overtime = true;
+                    match.overtimeTicks = 0;
+                } else {
+                    endMatch(match);
+                    broadcastState(match);
+                    return;
+                }
+            }
+        } else {
+            match.overtimeTicks++;
+            if (match.overtimeTicks >= OVERTIME_CAP_TICKS) {
+                endMatch(match);
+                broadcastState(match);
+                return;
+            }
         }
     }
 
@@ -403,12 +430,15 @@ function tickMatch(match) {
 
     // 3. Update Snowballs
     match.snowballs.forEach(ball => {
+        // A sudden-death freeze ends the match mid-tick: later balls in
+        // this tick must not score or hit anyone afterwards.
+        if (match.ended) return;
         ball.update();
 
         // Check Collisions
         for (const id in match.players) {
             const p = match.players[id];
-            if (ball.ownerId === p.id || ball.team === p.team || p.isFrozen) continue;
+            if (ball.ownerId === p.id || ball.team === p.team || p.isFrozen || match.ended) continue;
 
             const dist = Math.hypot(ball.x - p.x, ball.y - p.y);
             // Single-player: a human's throws get a slightly bigger hit
@@ -422,6 +452,9 @@ function tickMatch(match) {
                 // Team score: freezes inflicted by this team.
                 if (ball.team === 'blue' || ball.team === 'red') match.score[ball.team]++;
                 match.emit('hit', { x: p.x, y: p.y, id: p.id });
+                // Sudden death: the first freeze in overtime wins at once
+                // (the score just moved, so endMatch names that team).
+                if (match.overtime) endMatch(match);
 
                 // Auto-thaw after 5 seconds (only if the match still exists).
                 setTimeout(() => {

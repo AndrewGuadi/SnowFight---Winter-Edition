@@ -7,10 +7,14 @@
 //                              difficulty }, ... }
 //                     or 'joinError' { message }
 //   server -> client: 'state' { players, snowballs,
-//                              match: { timeLeft, score, ended, winner } }
+//                              match: { timeLeft, score, overtime,
+//                                       ended, winner } }
 //                     at 60 TPS, match-room only.
 //   server -> client: 'matchEnd' { winner, score } when the 3-minute
 //                     match timer expires (winner = most freezes inflicted).
+//                     A tie at the buzzer starts sudden-death overtime
+//                     (overtime: true) instead: the next freeze wins at
+//                     once; if the overtime cap expires it ends in a draw.
 // Difficulty applies to single-player bots only (multiplayer has no bots);
 // invalid or missing values default to 'normal'. The match length is
 // MATCH_DURATION_TICKS (default 10800 = 3 minutes at 60 TPS).
@@ -563,7 +567,7 @@ describe('timed matches and results', () => {
 
     before(async () => {
         shortProc = spawn('node', [SERVER_FILE], {
-            env: { ...process.env, PORT: String(SHORT_PORT), MATCH_DURATION_TICKS: '120' },
+            env: { ...process.env, PORT: String(SHORT_PORT), MATCH_DURATION_TICKS: '120', OVERTIME_CAP_TICKS: '120' },
             stdio: ['ignore', 'pipe', 'pipe'],
         });
         await waitForServerReady(shortProc);
@@ -584,17 +588,63 @@ describe('timed matches and results', () => {
         });
     }
 
-    test('a 3-minute match ends on the clock with a draw when nobody scores', async (t) => {
+    test('a scoreless match goes to sudden-death overtime, then draws at the overtime cap', async (t) => {
         const s = await connectClient(SHORT_URL);
         t.after(() => s.disconnect());
         await join(s, 'single', 1, 1);
+        const box = trackState(s);
+        // Tie at the buzzer: overtime starts, match not yet ended.
+        const ot = await waitForState(box,
+            (x) => x.match && x.match.overtime === true && x.match.ended === false,
+            'overtime state');
+        assert.equal(ot.match.timeLeft, 0);
+        assert.deepEqual(ot.match.score, { blue: 0, red: 0 });
+        // Nobody scores in the (2-second) overtime window: a draw.
         const end = await waitForMatchEnd(s);
         assert.equal(end.winner, 'draw');
         assert.deepEqual(end.score, { blue: 0, red: 0 });
-        const box = trackState(s);
         const st = await waitForState(box, (x) => x.match && x.match.ended === true, 'ended state');
         assert.equal(st.match.winner, 'draw');
+        assert.equal(st.match.overtime, true);
         assert.equal(st.match.timeLeft, 0);
+    });
+
+    describe('sudden-death overtime win', () => {
+        // Long overtime window so the bots have time to land a freeze.
+        const OT_PORT = 3461;
+        const OT_URL = `http://127.0.0.1:${OT_PORT}`;
+        let otProc;
+
+        before(async () => {
+            otProc = spawn('node', [SERVER_FILE], {
+                env: { ...process.env, PORT: String(OT_PORT), MATCH_DURATION_TICKS: '120', OVERTIME_CAP_TICKS: '3600' },
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+            await waitForServerReady(otProc);
+        });
+
+        after(() => {
+            if (otProc && !otProc.killed) otProc.kill();
+        });
+
+        test('the first freeze in overtime ends the match with a winner', async (t) => {
+            const s = await connectClient(OT_URL);
+            t.after(() => s.disconnect());
+            await join(s, 'single', 1, 1);
+            const box = trackState(s);
+            // Stand still: nobody can score in the 2-second regulation
+            // window (bots are still ~2600px apart), so overtime starts.
+            await waitForState(box,
+                (x) => x.match && x.match.overtime === true && x.match.ended === false,
+                'overtime state');
+            // Then the bots close in and a freeze decides it.
+            const end = await waitForMatchEnd(s, 70000);
+            assert.notEqual(end.winner, 'draw');
+            assert.ok(end.score.blue + end.score.red >= 1, `score ${JSON.stringify(end.score)}`);
+            const st = await waitForState(box, (x) => x.match && x.match.ended === true, 'ended state');
+            assert.equal(st.match.winner, end.winner);
+            assert.equal(st.match.overtime, true);
+        });
     });
 
     test('a freeze scores for the thrower team (bot freezing the human scores red)', async (t) => {
