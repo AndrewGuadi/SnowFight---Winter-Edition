@@ -726,3 +726,125 @@ describe('network and input regressions', () => {
         assert.equal(box.latest.players[s.id].chargeLevel,0);assert.equal(box.latest.players[s.id].stats.throws,1);
     });
 });
+
+describe('teammate rescue', () => {
+    test('touching a frozen teammate thaws them at once and credits the rescuer', async (t) => {
+        const a = await connectClient();
+        const b = await connectClient();
+        const c = await connectClient();
+        t.after(() => { a.disconnect(); b.disconnect(); c.disconnect(); });
+        // Join order gives blue, red, blue: a and c are teammates, b is the enemy.
+        assert.equal((await join(a, 'multi', 5, 5)).data.team, 'blue');
+        assert.equal((await join(b, 'multi', 5, 5)).data.team, 'red');
+        assert.equal((await join(c, 'multi', 5, 5)).data.team, 'blue');
+        const box = trackState(a);
+        await waitForState(box, (st) => playersOf(st).length === 3, '3 players');
+        const pos = (st, id) => st.players[id];
+
+        // Drive a socket toward a target position (from a's state view).
+        // `stop` is a distance to the target or a predicate (me, target, state).
+        // On stopping, just zero the input; the caller waits for friction
+        // to settle where the final position matters.
+        const driveTo = (sock, targetOf, stop) => new Promise((resolve, reject) => {
+            const to = setTimeout(() => { clearInterval(iv); reject(new Error('drive timeout')); }, 30000);
+            const iv = setInterval(() => {
+                const st = box.latest;
+                const me = st && st.players[sock.id];
+                const tg = st && targetOf(st);
+                if (!me || !tg) return;
+                const dx = tg.x - me.x, dy = tg.y - me.y;
+                const d = Math.hypot(dx, dy) || 1;
+                const done = typeof stop === 'function' ? stop(me, tg, st) : d <= stop;
+                if (done) {
+                    clearInterval(iv); clearTimeout(to);
+                    sock.emit('input', { moveX: 0, moveY: 0, angle: 0, dash: false, gather: false });
+                    resolve();
+                    return;
+                }
+                sock.emit('input', { moveX: dx / d, moveY: dy / d, angle: 0, dash: false, gather: false });
+            }, 50);
+            t.after(() => clearInterval(iv));
+        });
+
+        // 1. Park rescuer a next to victim c (a stop on distance, never
+        // on an exact point, so the ~13px movement step cannot oscillate).
+        await driveTo(a, (st) => pos(st, c.id), 25);
+        // 2. Bring enemy b to the far side of c from a (220px past c):
+        // b's snowball then reaches c before it could reach a, so the
+        // throw freezes c, not the rescuer standing beside them. The
+        // 50px tolerance covers a target point that lands inside an
+        // obstacle (b is pushed to its edge, ~44px, and can go no closer).
+        await driveTo(b, (st) => {
+            const ap = pos(st, a.id), cp = pos(st, c.id);
+            const dx = ap.x - cp.x, dy = ap.y - cp.y, d = Math.hypot(dx, dy) || 1;
+            const ux = d < 1 ? 1 : dx / d, uy = d < 1 ? 0 : dy / d;
+            return { x: cp.x - ux * 220, y: cp.y - uy * 220 };
+        }, 50);
+        // 3. b throws at c while a patrols back and forth across c
+        // (perpendicular to the b->c line, so a is off the snowball's
+        // path except at the crossing instant). Parking a precisely is
+        // not how rescue works in play: a teammate passing through a
+        // frozen player thaws them, and the patrol crosses c every
+        // ~0.7s, far inside the 5s natural thaw. If a throw catches a
+        // at the crossing instead, wait out a's thaw, move b ~60 degrees
+        // around c (an obstacle on the old segment would block every
+        // identical retry), and try again.
+        let frozen = null;
+        let patrolIv = null;
+        const startPatrol = () => {
+            let side = 1;
+            patrolIv = setInterval(() => {
+                const st = box.latest;
+                if (!st) return;
+                const bp = st.players[b.id], cp = st.players[c.id], ap = st.players[a.id];
+                if (!bp || !cp || !ap) return;
+                const dx = cp.x - bp.x, dy = cp.y - bp.y, d = Math.hypot(dx, dy) || 1;
+                const px = -dy / d, py = dx / d;
+                const tg = { x: cp.x + px * 100 * side, y: cp.y + py * 100 * side };
+                const ddx = tg.x - ap.x, ddy = tg.y - ap.y, dd = Math.hypot(ddx, ddy) || 1;
+                if (dd < 20) side = -side;
+                a.emit('input', { moveX: ddx / dd, moveY: ddy / dd, angle: 0, dash: false, gather: false });
+            }, 50);
+            t.after(() => clearInterval(patrolIv));
+        };
+        const stopPatrol = () => {
+            if (patrolIv) clearInterval(patrolIv);
+            patrolIv = null;
+            a.emit('input', { moveX: 0, moveY: 0, angle: 0, dash: false, gather: false });
+        };
+        for (let attempt = 0; attempt < 3 && !frozen; attempt++) {
+            startPatrol();
+            const st0 = box.latest;
+            const bp = st0.players[b.id], cp = st0.players[c.id];
+            const aim = Math.atan2(cp.y - bp.y, cp.x - bp.x);
+            b.emit('input', { moveX: 0, moveY: 0, angle: aim, dash: false, gather: false, throwStart: true, throwRelease: false });
+            await sleep(50);
+            b.emit('input', { moveX: 0, moveY: 0, angle: aim, dash: false, gather: false, throwStart: false, throwRelease: true });
+            try {
+                frozen = await waitForState(box, (st) => st.players[c.id] && st.players[c.id].isFrozen, 'c frozen', 2000);
+            } catch {
+                stopPatrol();
+                try { await waitForState(box, (st) => st.players[a.id] && !st.players[a.id].isFrozen, 'a thawed', 6000); } catch {}
+                const stB = box.latest;
+                const ang = Math.atan2(stB.players[b.id].y - stB.players[c.id].y, stB.players[b.id].x - stB.players[c.id].x) + 1.05;
+                await driveTo(b, (st) => {
+                    const cp = pos(st, c.id);
+                    return { x: cp.x + Math.cos(ang) * 220, y: cp.y + Math.sin(ang) * 220 };
+                }, 50);
+                const held = setInterval(() => b.emit('input', { moveX: 0, moveY: 0, angle: 0, dash: false, gather: true }), 100);
+                try { await waitForState(box, (st) => st.players[b.id] && st.players[b.id].hasBall, 'b reloaded', 5000); } finally { clearInterval(held); }
+            }
+        }
+        assert.ok(frozen, 'b froze c within 3 attempts');
+        const scoreAtFreeze = { ...frozen.match.score };
+        // 4. Rescue is immediate (natural thaw takes 5s): the patrolling
+        // rescuer crosses c within ~0.7s, so c unfrozen and a credited
+        // within 3s, with the freeze score untouched.
+        const rescued = await waitForState(box, (st) => {
+            const cp = st.players[c.id], ap = st.players[a.id];
+            return cp && !cp.isFrozen && ap && ap.stats.rescues >= 1;
+        }, 'c rescued by a', 3000);
+        assert.equal(rescued.players[a.id].stats.rescues, 1);
+        assert.deepEqual(rescued.match.score, scoreAtFreeze, 'rescue must not change the score');
+    });
+});
