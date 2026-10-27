@@ -5,6 +5,7 @@ function sanitizeInput(data) {
     return { moveX: data.moveX / length, moveY: data.moveY / length,
         angle: Math.atan2(Math.sin(data.angle), Math.cos(data.angle)),
         cancelCharge: data.cancelCharge === true,
+        ability: data.ability === true,
         dash: data.dash === true, gather: data.gather === true,
         throwStart: data.throwStart === true, throwRelease: data.throwRelease === true };
 }
@@ -21,3 +22,4 @@ function segmentHit(x0, y0, x1, y1, cx, cy, radius) {
     return t>=0 && t<=1 ? t : null;
 }
 module.exports = { sanitizeInput, segmentHit };
+

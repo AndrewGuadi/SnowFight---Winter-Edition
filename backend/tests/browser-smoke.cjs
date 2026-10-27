@@ -4,7 +4,7 @@ const os=require('node:os');
 const assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
 (async()=>{
- const server=spawn('node',['backend/server.js'],{cwd:path.join(__dirname,'../..'),env:{...process.env,PORT:'3460',MATCH_DURATION_TICKS:'180'},stdio:'pipe'});
+ const server=spawn('node',['backend/server.js'],{cwd:path.join(__dirname,'../..'),env:{...process.env,PORT:'3460',MATCH_DURATION_TICKS:'180',OVERTIME_CAP_TICKS:'60'},stdio:'pipe'});
  await new Promise((resolve,reject)=>{server.stdout.on('data',d=>{if(String(d).includes('running'))resolve()});server.on('exit',reject)});
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE || undefined,args:['--no-sandbox']});
  try {
@@ -36,3 +36,4 @@ const {spawn}=require('node:child_process');
  assert.deepEqual(errors,[]);console.log('PASS: portrait/landscape render, simultaneous move+aim, release-to-throw, gather, cancellation, authoritative results, deduplicated progression, rematch; no JS errors');
  } finally {await browser.close();server.kill();}
 })().catch(e=>{console.error(e);process.exitCode=1});
+
