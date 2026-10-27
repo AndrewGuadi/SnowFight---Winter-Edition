@@ -618,6 +618,13 @@ socket.on('effect', (data) => {
     else if (data.type === 'throw') {
         if (Math.hypot(STATE.camera.x - data.x, STATE.camera.y - data.y) < 800) Audio.sfx.throw();
     }
+    else if (data.type === 'thaw') {
+        // A teammate just rescued a frozen player: show it, don't just
+        // silently unfreeze them.
+        addPopup(data.x, data.y - 20, "THAWED!", "#00FFFF");
+        createParticles(data.x, data.y, '#00FFFF', 8);
+        if (data.id === STATE.id || data.rescuerId === STATE.id) Audio.sfx.collect();
+    }
 });
 
 socket.on('hit', (data) => {
@@ -657,7 +664,7 @@ function showResults(data) {
         `Blue ${data.score.blue} – ${data.score.red} Red`;
     const stats = STATE.players[STATE.id]?.stats || { freezes: 0, throws: 0 };
     const completed = stats.freezes >= MISSIONS[mission].target;
-    document.getElementById('results-personal').textContent = `${stats.freezes} freezes · ${stats.throws} throws · ${completed ? 'Assignment complete!' : 'Assignment: ' + stats.freezes + '/' + MISSIONS[mission].target} · Best: ${Math.max(career.best, stats.freezes)}`;
+    document.getElementById('results-personal').textContent = `${stats.freezes} freezes · ${stats.throws} throws · ${stats.rescues || 0} rescues · ${completed ? 'Assignment complete!' : 'Assignment: ' + stats.freezes + '/' + MISSIONS[mission].target} · Best: ${Math.max(career.best, stats.freezes)}`;
     career.rounds++; career.best = Math.max(career.best, stats.freezes);
     if (completed) career.medals++;
     try { localStorage.setItem('snowbrawl-career-v1', JSON.stringify(career)); } catch {}
