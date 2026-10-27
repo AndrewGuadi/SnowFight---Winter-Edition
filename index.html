@@ -151,6 +151,20 @@
                 <button id="size-30v30" onclick="selectSize(30, 30)" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">30v30</button>
             </div>
 
+            <!-- Private room: multiplayer only; hidden in single-player.
+                 Friends who enter the same code land in the same match;
+                 blank means an open match anyone can join. -->
+            <div id="room-row" class="mb-3" style="display:none">
+                <label class="mission-label" for="room-input">ROOM CODE · PLAY WITH FRIENDS</label>
+                <div class="flex gap-2">
+                    <input id="room-input" maxlength="8" autocapitalize="characters" autocomplete="off" spellcheck="false"
+                        placeholder="e.g. SNOW42 — blank = open match" oninput="selectRoom(this.value)"
+                        class="flex-1 py-2 px-3 rounded-xl font-black text-sm" style="background:#fff;border:2px solid #cfe3ea;color:#173b51;text-transform:uppercase">
+                    <button onclick="randomRoom()" class="menu-btn py-2 px-3 rounded-xl font-black text-sm">RANDOM</button>
+                </div>
+                <p class="field-hint">Share the code with friends — they enter it here and join your match.</p>
+            </div>
+
             <!-- Bot difficulty: single-player only; hidden in multiplayer. -->
             <div id="difficulty-row" class="flex gap-2 mb-3">
                 <button id="diff-easy" onclick="selectDifficulty('easy')" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">Easy</button>
@@ -551,7 +565,8 @@ socket.on('init', (data) => {
         const label = data.match.mode === 'single' ? 'Single' : 'Multi';
         const diff = (data.match.mode === 'single' && data.match.difficulty && data.match.difficulty !== 'normal')
             ? ` • ${data.match.difficulty[0].toUpperCase()}${data.match.difficulty.slice(1)}` : '';
-        STATE.badgeBase = `${label} • ${data.match.blueCap}v${data.match.redCap}${diff}`;
+        const room = (data.match.mode === 'multi' && data.match.roomCode) ? ` • Room ${data.match.roomCode}` : '';
+        STATE.badgeBase = `${label} • ${data.match.blueCap}v${data.match.redCap}${diff}${room}`;
         document.getElementById('match-badge').innerText = STATE.badgeBase;
     }
     // Join accepted: enter the game.
@@ -678,7 +693,23 @@ socket.on('matchEnd', () => { resetControls(); });
  * Preselect Single Player + 1v1 so Play works immediately.
  * 30v30 is single-player only: hidden from multiplayer selection.
  */
-const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'glacier' };
+const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'glacier', room: '' };
+
+function selectRoom(value) {
+    // Mirror the server's normalization: uppercase alphanumerics, max 8.
+    MENU.room = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    const input = document.getElementById('room-input');
+    if (input && input.value !== MENU.room) input.value = MENU.room;
+}
+
+function randomRoom() {
+    const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 5; i++) code += letters[Math.floor(Math.random() * letters.length)];
+    MENU.room = code;
+    const input = document.getElementById('room-input');
+    if (input) input.value = code;
+}
 
 function selectMode(mode) {
     MENU.mode = mode;
@@ -686,6 +717,8 @@ function selectMode(mode) {
     document.getElementById('mode-multi').classList.toggle('menu-active', mode === 'multi');
     // Bot difficulty is single-player only: hide the row in multiplayer.
     document.getElementById('difficulty-row').style.display = (mode === 'single') ? 'flex' : 'none';
+    // Private rooms are multiplayer only: hide the row in single-player.
+    document.getElementById('room-row').style.display = (mode === 'multi') ? 'block' : 'none';
     // 30v30 is single-player only: disable it in multiplayer, and if it
     // was selected, fall back to 1v1.
     const btn30 = document.getElementById('size-30v30');
@@ -728,7 +761,7 @@ function joinGame() {
     btn.disabled = true;
     btn.innerText = 'JOINING...';
     document.getElementById('menu-error').classList.add('hidden');
-    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, classId: MENU.classId });
+    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '' });
 }
 
 let previousFrame = performance.now(), lastInputSent = 0;
