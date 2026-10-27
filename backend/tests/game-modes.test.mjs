@@ -688,3 +688,41 @@ describe('timed matches and results', () => {
         assert.equal(stC.match.ended, false);
     });
 });
+
+
+describe('network and input regressions', () => {
+    test('30Hz snapshots retain 60Hz simulation, malformed packets stay harmless, idle input expires', async t => {
+        const s=await connectClient(); t.after(()=>s.disconnect());
+        await join(s,'multi',1,1);
+        const box=trackState(s); await waitForState(box,x=>x.players[s.id],'player');
+        const ticks=[]; s.on('state',x=>ticks.push(x.tick));
+        s.emit('input',null);
+        s.emit('input',{moveX:'bad',moveY:0,angle:0});
+        s.emit('input',{moveX:0,moveY:1,angle:0,throwStart:true,dash:true});
+        await sleep(250);
+        assert.ok(box.latest.players[s.id].chargeLevel>0);
+        assert.equal(box.latest.players[s.id].stats.dashes,1);
+        await sleep(550);
+        const p=box.latest.players[s.id];
+        assert.equal(p.inputs.moveY,0); assert.equal(p.chargeLevel,0);
+        assert.ok(Number.isFinite(p.x)&&Number.isFinite(p.y));
+        assert.ok(ticks.length>=12 && ticks.length<=35, `snapshot count ${ticks.length}`);
+        assert.ok(ticks.slice(1).every((tick,i)=>tick-ticks[i]===2));
+    });
+    test('quick charge/release and cancel are preserved between snapshots', async t => {
+        const s=await connectClient(); t.after(()=>s.disconnect());
+        await join(s,'multi',1,1); const box=trackState(s);
+        await waitForState(box,x=>x.players[s.id],'player');
+        s.emit('input',{moveX:0,moveY:0,angle:0,throwStart:true});
+        s.emit('input',{moveX:0,moveY:0,angle:0,throwRelease:true});
+        await waitForState(box,x=>x.players[s.id].stats.throws===1,'one throw');
+        assert.equal(box.latest.players[s.id].hasBall,false);
+        s.emit('input',{moveX:0,moveY:0,angle:0,gather:true});
+        const held=setInterval(()=>s.emit('input',{moveX:0,moveY:0,angle:0,gather:true}),100);
+        t.after(()=>clearInterval(held));
+        await waitForState(box,x=>x.players[s.id].hasBall,'reloaded');clearInterval(held);
+        s.emit('input',{moveX:0,moveY:0,angle:0,throwStart:true});await sleep(100);
+        s.emit('input',{moveX:0,moveY:0,angle:0,cancelCharge:true});await sleep(100);
+        assert.equal(box.latest.players[s.id].chargeLevel,0);assert.equal(box.latest.players[s.id].stats.throws,1);
+    });
+});

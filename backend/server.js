@@ -1,5 +1,10 @@
 const express = require('express');
+const path = require('path');
+const { sanitizeInput, segmentHit } = require('./gameplay');
 const app = express();
+app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
+app.get('/health', (_req, res) => res.json({ ok: true, simulationHz: 60, snapshotHz: 30 }));
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
     cors: { origin: "*" },
@@ -102,6 +107,7 @@ function createMatch(mode, blueCap, redCap, difficulty) {
         timerTicks: 0,
         overtime: false,
         overtimeTicks: 0,
+        tick: 0,
         ended: false,
         winner: null,
         players: {},
@@ -157,6 +163,9 @@ class ServerPlayer {
 
         // Game State
         this.isFrozen = false;
+        this.freezeTicks = 0;
+        this.stats = { throws: 0, freezes: 0, dashes: 0 };
+        this.lastInputAt = Date.now();
         this.hasBall = true;
         this.chargeLevel = 0;
         this.gatherProgress = 0;
@@ -170,12 +179,22 @@ class ServerPlayer {
     }
 
     update(match) {
-        if (this.isFrozen) return;
+        if (!this.isBot && Date.now() - this.lastInputAt > 500) {
+            this.inputs.moveX = this.inputs.moveY = 0;
+            this.inputs.dash = this.inputs.gather = false;
+            this.chargeLevel = 0;
+        }
+        if (this.isFrozen) {
+            this.inputs.dash = false;
+            if (--this.freezeTicks <= 0) this.isFrozen = false;
+            return;
+        }
 
         // 1. Handle Dash
         if (this.dashCooldownTimer > 0) this.dashCooldownTimer--;
 
         if (this.inputs.dash && this.dashCooldownTimer === 0 && (this.inputs.moveX !== 0 || this.inputs.moveY !== 0)) {
+            this.stats.dashes++;
             this.dashTimer = CONFIG.dashDuration;
             this.dashCooldownTimer = CONFIG.dashCooldown;
             const angle = Math.atan2(this.inputs.moveY, this.inputs.moveX);
@@ -184,6 +203,8 @@ class ServerPlayer {
             // Notify clients to play sound/effect (match room only)
             match.emit('effect', { type: 'dash', x: this.x, y: this.y, id: this.id });
         }
+
+        this.inputs.dash = false; // consume an edge once, even between snapshots
 
         // 2. Handle Movement
         if (this.dashTimer > 0) {
@@ -355,6 +376,8 @@ function broadcastState(match) {
     match.emitVolatile('state', {
         players: match.players,
         snowballs: match.snowballs,
+        tick: match.tick,
+        serverTime: Date.now(),
         match: matchStateInfo(match)
     });
 }
@@ -369,10 +392,11 @@ function endMatch(match) {
 
 // --- MATCH TICK ---
 function tickMatch(match) {
+    match.tick++;
     // Ended matches freeze: no more AI, movement, or snowballs — just
     // keep broadcasting state so clients hold the final scene.
     if (match.ended) {
-        broadcastState(match);
+        if (match.tick % 30 === 0) broadcastState(match);
         return;
     }
 
@@ -415,6 +439,7 @@ function tickMatch(match) {
             match.snowballs.push(new ServerSnowball(
                 p.x, p.y, p.inputs.angle, speed, p.id, p.team, p.chargeLevel
             ));
+            p.stats.throws++;
             p.hasBall = false;
             p.chargeLevel = 0;
             match.emit('effect', { type: 'throw', x: p.x, y: p.y });
@@ -430,53 +455,55 @@ function tickMatch(match) {
 
     // 3. Update Snowballs
     match.snowballs.forEach(ball => {
+        const fromX = ball.x, fromY = ball.y;
         // A sudden-death freeze ends the match mid-tick: later balls in
         // this tick must not score or hit anyone afterwards.
         if (match.ended) return;
         ball.update();
+        if (!ball.active) return;
+        // Resolve the first impact along the flight segment, including cover.
+        let impact = null, first = Infinity;
+        for (const obs of match.obstacles) {
+            const t = segmentHit(fromX, fromY, ball.x, ball.y, obs.x, obs.y, obs.radius + ball.radius);
+            if (t !== null && t < first) { first = t; impact = { obstacle: obs }; }
+        }
 
         // Check Collisions
         for (const id in match.players) {
             const p = match.players[id];
             if (ball.ownerId === p.id || ball.team === p.team || p.isFrozen || match.ended) continue;
 
-            const dist = Math.hypot(ball.x - p.x, ball.y - p.y);
-            // Single-player: a human's throws get a slightly bigger hit
-            // area (easier to hit bots). Bot throws and all multiplayer
-            // throws use the original radius.
             const owner = match.players[ball.ownerId];
             const bonus = (match.mode === 'single' && owner && !owner.isBot) ? SINGLE_HIT_BONUS : 0;
-            if (dist < p.radius + ball.radius + bonus) {
-                ball.active = false;
+            const t = segmentHit(fromX, fromY, ball.x, ball.y, p.x, p.y, p.radius + ball.radius + bonus);
+            if (t !== null && t < first) { first = t; impact = { player: p }; }
+        }
+        if (impact) {
+            ball.active = false;
+            if (impact.player) {
+                const p = impact.player;
                 p.isFrozen = true;
-                // Team score: freezes inflicted by this team.
-                if (ball.team === 'blue' || ball.team === 'red') match.score[ball.team]++;
-                match.emit('hit', { x: p.x, y: p.y, id: p.id });
+                p.freezeTicks = 300;
+                p.chargeLevel = 0;
+                p.vx = p.vy = 0;
+                p.inputs.dash = false;
+                match.score[ball.team]++;
+                const owner = match.players[ball.ownerId];
+                if (owner) owner.stats.freezes++;
+                match.emit('hit', { x: p.x, y: p.y, id: p.id, ownerId: ball.ownerId });
                 // Sudden death: the first freeze in overtime wins at once
                 // (the score just moved, so endMatch names that team).
                 if (match.overtime) endMatch(match);
-
-                // Auto-thaw after 5 seconds (only if the match still exists).
-                setTimeout(() => {
-                    if (matches.get(match.id) === match && match.players[id]) {
-                        match.players[id].isFrozen = false;
-                    }
-                }, 5000);
+            } else {
+                match.emit('effect', { type: 'obs_hit', x: fromX + (ball.x-fromX)*first, y: fromY + (ball.y-fromY)*first });
             }
         }
-
-        match.obstacles.forEach(obs => {
-            if (ball.active && Math.hypot(ball.x - obs.x, ball.y - obs.y) < obs.radius + ball.radius) {
-                ball.active = false;
-                match.emit('effect', { type: 'obs_hit', x: ball.x, y: ball.y });
-            }
-        });
     });
 
     match.snowballs = match.snowballs.filter(b => b.active);
 
     // 4. Broadcast State (match room only).
-    broadcastState(match);
+    if (match.tick % 2 === 0) broadcastState(match);
 }
 
 // --- SERVER LOOP (60 TPS, iterates all matches) ---
@@ -509,6 +536,8 @@ function leaveMatch(socket) {
 // The client must send 'join' {mode, blue, red} first.
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
+
+    socket.on('latency', (ack) => { if (typeof ack === 'function') ack(); });
 
     socket.on('join', (data) => {
         const mode = data && data.mode;
@@ -574,16 +603,21 @@ io.on('connection', (socket) => {
         const matchId = socket.data && socket.data.matchId;
         const match = matchId && matches.get(matchId);
         const p = match && match.players[socket.id];
-        if (!p) return;
+        if (!p || match.ended) return;
+        data = sanitizeInput(data);
+        if (!data) return;
+        p.lastInputAt = Date.now();
 
         p.inputs.moveX = data.moveX;
         p.inputs.moveY = data.moveY;
-        p.inputs.dash = data.dash;
+        p.inputs.dash = p.inputs.dash || data.dash;
         p.inputs.gather = data.gather;
         p.inputs.angle = data.angle;
 
+        if (data.cancelCharge) p.chargeLevel = 0;
+
         // Charge
-        if (data.throwStart && p.hasBall && !p.isFrozen) {
+        if (data.throwStart && p.hasBall && !p.isFrozen && !p.chargeLevel) {
             p.chargeLevel = 1;
         }
 
@@ -594,6 +628,7 @@ io.on('connection', (socket) => {
                 p.x, p.y, data.angle, speed, p.id, p.team, p.chargeLevel
             ));
 
+            p.stats.throws++;
             p.hasBall = false;
             p.chargeLevel = 0;
             match.emit('effect', { type: 'throw', x: p.x, y: p.y });
@@ -610,3 +645,4 @@ const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
     console.log(`Snowbrawl Server running on port ${PORT}`);
 });
+
