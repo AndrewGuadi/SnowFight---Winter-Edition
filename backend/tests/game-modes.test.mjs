@@ -10,14 +10,26 @@
 //                              match: { timeLeft, score, overtime,
 //                                       ended, winner } }
 //                     at 60 TPS, match-room only.
-//   server -> client: 'matchEnd' { winner, score } when the 3-minute
-//                     match timer expires (winner = most freezes inflicted).
-//                     A tie at the buzzer starts sudden-death overtime
-//                     (overtime: true) instead: the next freeze wins at
-//                     once; if the overtime cap expires it ends in a draw.
+//   server -> client: 'matchEnd' { winner, score, hill } when the
+//                     90-second match timer expires (winner = most hill
+//                     points banked, then most freezes inflicted).
+//                     A full tie at the buzzer starts sudden-death
+//                     overtime (overtime: true) instead: the next freeze
+//                     wins at once; if the overtime cap expires it ends
+//                     in a draw.
+//   Multiplayer rooms: 'join' may carry an optional 'room' code
+//                     (multi only; normalized server-side to 1-8 uppercase
+//                     alphanumerics). Same code = same match; open joins
+//                     never enter a private room; a full room rejects
+//                     with 'joinError'. 'init' echoes roomCode (null for
+//                     open matches) and 'state' carries match.hill.
+//   Center hill: the team with strictly more alive, unfrozen players
+//                     inside the center circle banks 1 hill point per
+//                     second of holding; match.hillHolder names the
+//                     holder (null when tied or empty).
 // Difficulty applies to single-player bots only (multiplayer has no bots);
 // invalid or missing values default to 'normal'. The match length is
-// MATCH_DURATION_TICKS (default 10800 = 3 minutes at 60 TPS).
+// MATCH_DURATION_TICKS (default 5400 = 90 seconds at 60 TPS).
 //
 // Run: npm test   (from backend/)
 // Requires socket.io-client (devDependency). The server under test is
@@ -89,6 +101,24 @@ async function join(socket, mode, blue, red) {
         socket.on('init', onInit);
         socket.on('joinError', onErr);
         socket.emit('join', { mode, blue, red });
+    });
+}
+
+// Join with extra fields (e.g. a private-room code for multiplayer).
+async function joinExtra(socket, fields) {
+    return new Promise((resolve, reject) => {
+        const to = setTimeout(() => reject(new Error('join timed out')), 5000);
+        const done = (kind) => (data) => {
+            clearTimeout(to);
+            socket.off('init', onInit);
+            socket.off('joinError', onErr);
+            resolve({ kind, data });
+        };
+        const onInit = done('init');
+        const onErr = done('joinError');
+        socket.on('init', onInit);
+        socket.on('joinError', onErr);
+        socket.emit('join', fields);
     });
 }
 
@@ -846,5 +876,109 @@ describe('teammate rescue', () => {
         }, 'c rescued by a', 3000);
         assert.equal(rescued.players[a.id].stats.rescues, 1);
         assert.deepEqual(rescued.match.score, scoreAtFreeze, 'rescue must not change the score');
+    });
+});
+
+describe('private rooms', () => {
+    test('friends with the same code land in the same match', async (t) => {
+        const a = await connectClient();
+        const b = await connectClient();
+        t.after(() => { a.disconnect(); b.disconnect(); });
+        const ra = await joinExtra(a, { mode: 'multi', blue: 1, red: 1, room: 'q7rk13' });
+        assert.equal(ra.kind, 'init');
+        assert.equal(ra.data.match.roomCode, 'Q7RK13');
+        const rb = await joinExtra(b, { mode: 'multi', blue: 1, red: 1, room: 'Q7RK13' });
+        assert.equal(rb.kind, 'init');
+        assert.equal(rb.data.match.roomCode, 'Q7RK13');
+        const boxA = trackState(a);
+        const st = await waitForState(boxA, (x) => playersOf(x).length === 2, 'room pair together');
+        assert.ok(st.players[a.id] && st.players[b.id], 'both room members in one match');
+    });
+
+    test('an open join never enters a private room', async (t) => {
+        const a = await connectClient();
+        const b = await connectClient();
+        t.after(() => { a.disconnect(); b.disconnect(); });
+        const ra = await joinExtra(a, { mode: 'multi', blue: 1, red: 1, room: 'Q7RK14' });
+        assert.equal(ra.kind, 'init');
+        const rb = await join(b, 'multi', 1, 1);
+        assert.equal(rb.kind, 'init');
+        assert.ok(!rb.data.match.roomCode, 'open join has no room code');
+        const boxB = trackState(b);
+        const st = await waitForState(boxB, (x) => playersOf(x).length >= 1, 'open join state');
+        assert.ok(!st.players[a.id], 'open joiner did not land in the private room');
+    });
+
+    test('a full private room rejects late joiners', async (t) => {
+        const a = await connectClient();
+        const b = await connectClient();
+        const c = await connectClient();
+        t.after(() => { a.disconnect(); b.disconnect(); c.disconnect(); });
+        await joinExtra(a, { mode: 'multi', blue: 1, red: 1, room: 'Q7RK15' });
+        await joinExtra(b, { mode: 'multi', blue: 1, red: 1, room: 'Q7RK15' });
+        const rc = await joinExtra(c, { mode: 'multi', blue: 1, red: 1, room: 'Q7RK15' });
+        assert.equal(rc.kind, 'joinError');
+        assert.match(rc.data.message, /full/i);
+    });
+
+    test('single-player ignores room codes', async (t) => {
+        const a = await connectClient();
+        t.after(() => a.disconnect());
+        const ra = await joinExtra(a, { mode: 'single', blue: 1, red: 1, room: 'Q7RK16' });
+        assert.equal(ra.kind, 'init');
+        assert.ok(!ra.data.match.roomCode, 'single-player match has no room code');
+    });
+});
+
+describe('center hill', () => {
+    // 10-second matches: steer one player onto the hill and hold it.
+    const HILL_PORT = 3463;
+    const HILL_URL = `http://127.0.0.1:${HILL_PORT}`;
+    let hillProc;
+
+    before(async () => {
+        hillProc = spawn('node', [SERVER_FILE], {
+            env: { ...process.env, PORT: String(HILL_PORT), MATCH_DURATION_TICKS: '600', OVERTIME_CAP_TICKS: '120' },
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        await waitForServerReady(hillProc);
+    });
+
+    after(() => {
+        if (hillProc && !hillProc.killed) hillProc.kill();
+    });
+
+    test('holding the hill wins at the buzzer on a scoreless freeze count', async (t) => {
+        const a = await connectClient(HILL_URL);
+        const b = await connectClient(HILL_URL);
+        t.after(() => { a.disconnect(); b.disconnect(); });
+        const ra = await join(a, 'multi', 1, 1);
+        assert.equal(ra.kind, 'init');
+        await join(b, 'multi', 1, 1);
+        // First joiner is blue; steer blue to the hill center (1500, 1000)
+        // and hold there. Red stands still at spawn, far from the hill.
+        const blueId = ra.data.team === 'blue' ? a.id : b.id;
+        const blueSocket = ra.data.team === 'blue' ? a : b;
+        const box = trackState(blueSocket);
+        await waitForState(box, (x) => x.players[blueId], 'blue player in state');
+        const steer = setInterval(() => {
+            const st = box.latest;
+            if (!st || st.match?.ended) return;
+            const me = st.players[blueId];
+            if (!me) return;
+            const dx = 1500 - me.x, dy = 1000 - me.y;
+            const len = Math.hypot(dx, dy) || 1;
+            blueSocket.emit('input', {
+                moveX: dx / len, moveY: dy / len,
+                angle: Math.atan2(dy, dx), dash: false, gather: false,
+            });
+        }, 100);
+        t.after(() => clearInterval(steer));
+        const end = await waitForState(box,
+            (x) => x.match && x.match.ended === true, 'hill match ended', 30000);
+        assert.equal(end.match.winner, 'blue');
+        assert.ok(end.match.hill.blue >= 1, `hill blue ${JSON.stringify(end.match.hill)}`);
+        assert.equal(end.match.hill.red, 0);
+        assert.deepEqual(end.match.score, { blue: 0, red: 0 });
     });
 });
