@@ -41,8 +41,18 @@ function sizeAllowed(mode, blue, red) {
 }
 
 // --- MATCH LENGTH ---
-// 3 minutes at 60 TPS. Overridable via env for tests.
-const MATCH_DURATION_TICKS = Number(process.env.MATCH_DURATION_TICKS) || 10800;
+// 90 seconds at 60 TPS: a quick brawl, not a slog. Overridable via env
+// for tests.
+const MATCH_DURATION_TICKS = Number(process.env.MATCH_DURATION_TICKS) || 5400;
+
+// --- CENTER HILL (the one objective) ---
+// A circle at the middle of the field. The team with strictly more
+// alive, unfrozen players inside it holds the hill and banks 1 hill
+// point per second of holding. Most hill points at the buzzer wins;
+// on a hill tie the freeze score decides, then sudden-death overtime.
+const HILL_RADIUS = 260;
+const HILL_CENTER_X = CONFIG.worldWidth / 2;
+const HILL_CENTER_Y = CONFIG.worldHeight / 2;
 
 // --- SUDDEN-DEATH OVERTIME ---
 // A tie at the buzzer does not end in a draw: overtime starts and the
@@ -65,6 +75,16 @@ const SINGLE_HIT_BONUS = 6;
 
 function difficultyValid(d) {
     return (d === 'easy' || d === 'normal' || d === 'hard') ? d : 'normal';
+}
+
+// Private-room code for multiplayer: friends who enter the same code
+// land in the same match. Normalized to 1-8 uppercase alphanumerics;
+// anything else (empty, symbols-only) means "open match". Single-player
+// ignores room codes entirely.
+function sanitizeRoomCode(raw) {
+    if (raw === null || raw === undefined) return null;
+    const code = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    return code.length > 0 ? code : null;
 }
 function difficultyOf(match) {
     return DIFFICULTY[match.difficulty] || DIFFICULTY.normal;
@@ -90,7 +110,7 @@ function makeObstacles() {
     return obstacles;
 }
 
-function createMatch(mode, blueCap, redCap, difficulty) {
+function createMatch(mode, blueCap, redCap, difficulty, roomCode) {
     const id = `match-${Date.now().toString(36)}-${++matchCounter}`;
     const match = {
         id,
@@ -98,12 +118,19 @@ function createMatch(mode, blueCap, redCap, difficulty) {
         blueCap,
         redCap,
         difficulty: difficulty || 'normal',
+        // Private-room code (multiplayer only); null = open match that
+        // any player with the same caps can join.
+        roomCode: mode === 'multi' ? (sanitizeRoomCode(roomCode) || null) : null,
         // Timed-match state: the clock starts once at least 2 players are
-        // present; at 3 minutes the match ends and a winner is declared
-        // from the freeze score (most freezes inflicted). A tie at the
-        // buzzer starts sudden-death overtime instead: the next freeze
-        // wins, capped at OVERTIME_CAP_TICKS (then it is a draw).
+        // present; at 90 seconds the match ends and a winner is declared
+        // from the hill score first (most hill points banked), then the
+        // freeze score. A full tie at the buzzer starts sudden-death
+        // overtime instead: the next freeze wins, capped at
+        // OVERTIME_CAP_TICKS (then it is a draw).
         score: { blue: 0, red: 0 },
+        hill: { blue: 0, red: 0 },
+        hillHolder: null,
+        hillSecondTicks: 0,
         timerStarted: false,
         timerTicks: 0,
         overtime: false,
@@ -138,10 +165,29 @@ function findMultiMatch(blueCap, redCap) {
     for (const match of matches.values()) {
         if (match.mode !== 'multi') continue;
         if (match.ended) continue;
+        if (match.roomCode) continue; // private rooms are found by code, not by chance
         if (match.blueCap !== blueCap || match.redCap !== redCap) continue;
         if (countTeam(match, 'blue') < blueCap || countTeam(match, 'red') < redCap) return match;
     }
     return null;
+}
+
+// The (single) live multi match carrying this private-room code and
+// these caps, whether or not it still has an open slot. Ended matches
+// never match: a finished room's code is free to start a fresh match.
+function findRoomMatch(roomCode, blueCap, redCap) {
+    for (const match of matches.values()) {
+        if (match.mode !== 'multi') continue;
+        if (match.ended) continue;
+        if (match.roomCode !== roomCode) continue;
+        if (match.blueCap !== blueCap || match.redCap !== redCap) continue;
+        return match;
+    }
+    return null;
+}
+
+function roomHasOpenSlot(match) {
+    return countTeam(match, 'blue') < match.blueCap || countTeam(match, 'red') < match.redCap;
 }
 
 // --- PLAYER CLASS ---
@@ -406,6 +452,8 @@ function matchStateInfo(match) {
             ? Math.max(0, Math.ceil((MATCH_DURATION_TICKS - match.timerTicks) / 60))
             : null,
         score: match.score,
+        hill: match.hill,
+        hillHolder: match.hillHolder,
         overtime: match.overtime,
         ended: match.ended,
         winner: match.winner
@@ -423,12 +471,24 @@ function broadcastState(match) {
     });
 }
 
-function endMatch(match) {
+function endMatch(match, suddenDeath) {
     match.ended = true;
     match.snowballs = [];
-    match.winner = match.score.blue > match.score.red ? 'blue'
-        : match.score.red > match.score.blue ? 'red' : 'draw';
-    match.emit('matchEnd', { winner: match.winner, score: match.score });
+    if (suddenDeath) {
+        // Sudden death: the freeze that just landed decides it, whatever
+        // the hill says.
+        match.winner = match.score.blue > match.score.red ? 'blue'
+            : match.score.red > match.score.blue ? 'red' : 'draw';
+    } else {
+        // Regulation / cap: most hill points wins; freeze score breaks
+        // a hill tie; a full tie is a draw (or overtime, decided by the
+        // caller at the buzzer).
+        match.winner = match.hill.blue > match.hill.red ? 'blue'
+            : match.hill.red > match.hill.blue ? 'red'
+            : match.score.blue > match.score.red ? 'blue'
+            : match.score.red > match.score.blue ? 'red' : 'draw';
+    }
+    match.emit('matchEnd', { winner: match.winner, score: match.score, hill: match.hill });
 }
 
 // --- MATCH TICK ---
@@ -449,8 +509,10 @@ function tickMatch(match) {
         if (!match.overtime) {
             match.timerTicks++;
             if (match.timerTicks >= MATCH_DURATION_TICKS) {
-                if (match.score.blue === match.score.red) {
-                    // Tie at the buzzer: sudden death, not a draw.
+                const hillTied = match.hill.blue === match.hill.red;
+                const scoreTied = match.score.blue === match.score.red;
+                if (hillTied && scoreTied) {
+                    // Full tie at the buzzer: sudden death, not a draw.
                     // The tick continues below so play resumes at once.
                     match.overtime = true;
                     match.overtimeTicks = 0;
@@ -467,6 +529,30 @@ function tickMatch(match) {
                 broadcastState(match);
                 return;
             }
+        }
+    }
+
+    // Center-hill scoring (regulation only): the team with strictly more
+    // alive, unfrozen players inside the hill banks a point per second.
+    if (match.timerStarted && !match.overtime) {
+        let blueIn = 0, redIn = 0;
+        for (const id in match.players) {
+            const p = match.players[id];
+            if (p.isFrozen) continue;
+            if (Math.hypot(p.x - HILL_CENTER_X, p.y - HILL_CENTER_Y) <= HILL_RADIUS) {
+                if (p.team === 'blue') blueIn++;
+                else redIn++;
+            }
+        }
+        const holder = blueIn > redIn ? 'blue' : redIn > blueIn ? 'red' : null;
+        match.hillHolder = holder;
+        if (holder) {
+            if (++match.hillSecondTicks >= 60) {
+                match.hill[holder]++;
+                match.hillSecondTicks = 0;
+            }
+        } else {
+            match.hillSecondTicks = 0;
         }
     }
 
@@ -556,8 +642,9 @@ function tickMatch(match) {
                 if (owner) owner.stats.freezes++;
                 match.emit('hit', { x: p.x, y: p.y, id: p.id, ownerId: ball.ownerId });
                 // Sudden death: the first freeze in overtime wins at once
-                // (the score just moved, so endMatch names that team).
-                if (match.overtime) endMatch(match);
+                // (the score just moved, so the sudden-death endMatch
+                // names that team, whatever the hill says).
+                if (match.overtime) endMatch(match, true);
             } else {
                 if (impact.obstacle.hp !== undefined) {
                     impact.obstacle.hp--;
@@ -601,7 +688,8 @@ function leaveMatch(socket) {
 
 // --- CONNECTION HANDLING ---
 // NOTE: unlike the original server, connecting does NOT create a player.
-// The client must send 'join' {mode, blue, red} first.
+// The client must send 'join' {mode, blue, red} first (multiplayer may
+// also send an optional 'room' code to share a private match).
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
@@ -615,6 +703,8 @@ io.on('connection', (socket) => {
         // normal (multiplayer has no bots, so it is ignored there).
         const difficulty = difficultyValid(data && data.difficulty);
         const recruit = classId(data && data.classId);
+        // Private-room code: multiplayer only; ignored in single-player.
+        const room = mode === 'multi' ? sanitizeRoomCode(data && data.room) : null;
 
         if ((mode !== 'single' && mode !== 'multi') || !sizeAllowed(mode, blue, red)) {
             socket.emit('joinError', { message: 'Invalid mode or match size.' });
@@ -632,21 +722,39 @@ io.on('connection', (socket) => {
             match.players[socket.id] = new ServerPlayer(socket.id, 'blue', false, recruit);
             for (let i = 0; i < blue - 1; i++) addBot(match, 'blue');
             for (let i = 0; i < red; i++) addBot(match, 'red');
+        } else if (room) {
+            // Private room: friends with the same code share one match.
+            // A full room rejects late joiners rather than silently
+            // splitting them into a second match under the same code.
+            match = findRoomMatch(room, blue, red);
+            if (match && !roomHasOpenSlot(match)) {
+                socket.emit('joinError', { message: 'Room is full — try another code.' });
+                return;
+            }
+            if (!match) {
+                match = createMatch('multi', blue, red, undefined, room);
+            }
         } else {
-            // Multiplayer: humans only, never bots. Join the earliest match
-            // with the same caps and an open slot; otherwise create one.
+            // Multiplayer: humans only, never bots. Join the earliest
+            // OPEN match with the same caps and an open slot; otherwise
+            // create one. Private rooms are never joined by chance.
             match = findMultiMatch(blue, red);
             if (!match) {
                 match = createMatch('multi', blue, red);
             }
+        }
+        if (mode === 'multi') {
+            // Shared team assignment for open and private matches alike:
+            // fill the emptier side first, never overfill a team.
             const blues = countTeam(match, 'blue');
             const reds = countTeam(match, 'red');
             let team;
             if (blues <= reds && blues < blue) team = 'blue';
             else if (reds < red) team = 'red';
             else {
-                // Both teams full (should not happen via findMultiMatch):
-                // start a fresh match rather than overfilling.
+                // Both teams full (should not happen: open matches are
+                // only picked with a slot, rooms reject when full):
+                // start a fresh open match rather than overfilling.
                 match = createMatch('multi', blue, red);
                 team = 'blue';
             }
@@ -666,7 +774,7 @@ io.on('connection', (socket) => {
             team: match.players[socket.id].team,
             classId: recruit,
             classes: CLASSES,
-            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty }
+            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty, roomCode: match.roomCode || null }
         });
     });
 

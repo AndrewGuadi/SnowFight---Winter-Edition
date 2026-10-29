@@ -124,6 +124,20 @@
                 <p class="text-sm font-bold text-slate-400">CONNECTING TO SERVER...</p>
             </div>
 
+            <!-- FRONT DOOR: one PLAY button straight into a 90-second brawl.
+                 Class, mode, size and difficulty live behind Custom. -->
+            <div id="front-door" class="mb-4">
+                <p class="text-slate-500 font-bold tracking-widest text-xs uppercase mb-1">90-SECOND BRAWL · HOLD THE CENTER HILL</p>
+                <p class="field-hint" style="margin:0 0 10px">Most hill points at the buzzer wins. No setup — just play.</p>
+                <button id="btn-play-quick" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-2xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
+                    ▶ PLAY
+                </button>
+                <div class="flex gap-2 mt-2">
+                    <button onclick="playWithFriends()" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">👥 PLAY WITH FRIENDS</button>
+                    <button onclick="toggleCustom()" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">⚙️ CUSTOM</button>
+                </div>
+            </div>
+            <div id="custom-panel" style="display:none">
             <section class="recruit-section" aria-label="Choose your snow fighter">
                 <div class="recruit-heading"><span>THE SNOWGUARD</span><span>03 RECRUITS</span></div>
                 <div class="recruit-stage"><canvas id="recruit-hero" width="300" height="180" aria-label="Selected snow character preview"></canvas><div><small id="recruit-role"></small><h2 id="recruit-name"></h2><p id="recruit-detail"></p></div></div>
@@ -151,6 +165,20 @@
                 <button id="size-30v30" onclick="selectSize(30, 30)" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">30v30</button>
             </div>
 
+            <!-- Private room: multiplayer only; hidden in single-player.
+                 Friends who enter the same code land in the same match;
+                 blank means an open match anyone can join. -->
+            <div id="room-row" class="mb-3" style="display:none">
+                <label class="mission-label" for="room-input">ROOM CODE · PLAY WITH FRIENDS</label>
+                <div class="flex gap-2">
+                    <input id="room-input" maxlength="8" autocapitalize="characters" autocomplete="off" spellcheck="false"
+                        placeholder="e.g. SNOW42 — blank = open match" oninput="selectRoom(this.value)"
+                        class="flex-1 py-2 px-3 rounded-xl font-black text-sm" style="background:#fff;border:2px solid #cfe3ea;color:#173b51;text-transform:uppercase">
+                    <button onclick="randomRoom()" class="menu-btn py-2 px-3 rounded-xl font-black text-sm">RANDOM</button>
+                </div>
+                <p class="field-hint">Share the code with friends — they enter it here and join your match.</p>
+            </div>
+
             <!-- Bot difficulty: single-player only; hidden in multiplayer. -->
             <div id="difficulty-row" class="flex gap-2 mb-3">
                 <button id="diff-easy" onclick="selectDifficulty('easy')" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">Easy</button>
@@ -172,14 +200,16 @@
                 WAITING FOR SERVER...
             </button>
             </div>
+            </div>
         </div>
     </div>
 
-    <!-- Results overlay: shown on matchEnd (3-minute matches). -->
+    <!-- Results overlay: shown on matchEnd (90-second matches). -->
     <div id="results-overlay" class="hidden absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
         <div class="bg-white/95 p-8 rounded-3xl shadow-2xl text-center max-w-lg w-full mx-4 border border-white/50 animate-pop">
             <h2 id="results-title" class="text-5xl font-black mb-2 text-slate-700">DRAW</h2>
-            <p id="results-score" class="text-slate-500 font-bold mb-6 tracking-widest text-sm">Blue 0 – 0 Red</p>
+            <p id="results-score" class="text-slate-500 font-bold mb-2 tracking-widest text-sm">Blue 0 – 0 Red</p>
+            <p id="results-hill" class="text-slate-500 font-bold mb-6 tracking-widest text-sm"></p>
             <p id="results-personal" class="field-hint"></p>
             <div class="flex gap-2">
                 <button onclick="rematch()" class="flex-1 py-3 rounded-xl font-black bg-blue-600 text-white">REMATCH</button>
@@ -197,6 +227,8 @@
             </div>
             <div class="glass-panel px-2 py-2 rounded-xl flex items-center gap-1 pointer-events-auto">
                 <span id="match-badge" class="font-black text-xs text-slate-700 mr-1">Single • 1v1</span>
+                <span id="hill-badge" class="font-black text-xs text-slate-700">🏔 HILL 0–0</span>
+                <button id="copy-link-btn" onclick="copyInviteLink()" class="view-btn" style="display:none">🔗 COPY INVITE LINK</button>
                 <button class="view-btn view-active" onclick="setView(0)">Close</button>
                 <button class="view-btn" onclick="setView(1)">Wide</button>
                 <button class="view-btn" onclick="setView(2)">Far</button>
@@ -526,6 +558,18 @@ socket.on('connect', () => {
     btn.classList.remove('bg-slate-300', 'opacity-50', 'cursor-not-allowed');
     btn.classList.add('bg-blue-600', 'hover:bg-blue-500', 'cursor-pointer', 'transform', 'hover:scale-105');
     btn.innerText = "JOIN BATTLE";
+    const quick = document.getElementById('btn-play-quick');
+    if (quick) {
+        quick.disabled = false;
+        quick.classList.remove('bg-slate-300', 'opacity-50', 'cursor-not-allowed');
+        quick.classList.add('bg-blue-600', 'hover:bg-blue-500', 'cursor-pointer', 'transform', 'hover:scale-105');
+        quick.innerText = "▶ PLAY";
+    }
+    // Room link join: ?room=CODE drops straight into that friends' match.
+    if (URL_ROOM && !URL_ROOM_JOINED && !STATE.id) {
+        URL_ROOM_JOINED = true;
+        joinGame();
+    }
 });
 
 socket.on('init', (data) => {
@@ -551,7 +595,11 @@ socket.on('init', (data) => {
         const label = data.match.mode === 'single' ? 'Single' : 'Multi';
         const diff = (data.match.mode === 'single' && data.match.difficulty && data.match.difficulty !== 'normal')
             ? ` • ${data.match.difficulty[0].toUpperCase()}${data.match.difficulty.slice(1)}` : '';
-        STATE.badgeBase = `${label} • ${data.match.blueCap}v${data.match.redCap}${diff}`;
+        const room = (data.match.mode === 'multi' && data.match.roomCode) ? ` • Room ${data.match.roomCode}` : '';
+        STATE.badgeBase = `${label} • ${data.match.blueCap}v${data.match.redCap}${diff}${room}`;
+        STATE.roomCode = (data.match.mode === 'multi') ? (data.match.roomCode || null) : null;
+        const copyBtn = document.getElementById('copy-link-btn');
+        if (copyBtn) copyBtn.style.display = STATE.roomCode ? 'inline-block' : 'none';
         document.getElementById('match-badge').innerText = STATE.badgeBase;
     }
     // Join accepted: enter the game.
@@ -567,6 +615,8 @@ socket.on('joinError', (data) => {
     const btn = document.getElementById('btn-play');
     btn.disabled = false;
     btn.innerText = 'JOIN BATTLE';
+    const quick = document.getElementById('btn-play-quick');
+    if (quick) { quick.disabled = false; quick.innerText = '▶ PLAY'; }
 });
 
 socket.on('state', (serverData) => {
@@ -588,6 +638,16 @@ socket.on('state', (serverData) => {
     const reds = Object.values(serverData.players).filter(p => p.team === 'red' && !p.isFrozen).length;
     document.getElementById('score-blue').innerText = serverData.match?.score.blue ?? blues;
     document.getElementById('score-red').innerText = serverData.match?.score.red ?? reds;
+    // Hill score pill (e.g. "🏔 HILL 3–1" + holder arrow) + holder for
+    // the on-field hill circle drawn in the render loop.
+    if (serverData.match) STATE.hillHolder = serverData.match.hillHolder || null;
+    if (serverData.match && serverData.match.hill) {
+        const h = serverData.match.hill;
+        const holder = serverData.match.hillHolder;
+        const arrow = holder === 'blue' ? ' ◀' : holder === 'red' ? ' ▶' : '';
+        const pill = document.getElementById('hill-badge');
+        if (pill) pill.innerText = `🏔 HILL ${h.blue}–${h.red}${arrow}`;
+    }
     // Match clock + freeze score in the badge (e.g. "Single • 5v5 • 2:31 • 5–3").
     if (serverData.match && STATE.badgeBase) {
         const m = serverData.match;
@@ -662,6 +722,10 @@ function showResults(data) {
     }
     document.getElementById('results-score').innerText =
         `Blue ${data.score.blue} – ${data.score.red} Red`;
+    const hillEl = document.getElementById('results-hill');
+    if (hillEl) hillEl.innerText = data.hill
+        ? `🏔 Hill: Blue ${data.hill.blue} – ${data.hill.red} Red`
+        : '';
     const stats = STATE.players[STATE.id]?.stats || { freezes: 0, throws: 0 };
     const completed = stats.freezes >= MISSIONS[mission].target;
     document.getElementById('results-personal').textContent = `${stats.freezes} freezes · ${stats.throws} throws · ${stats.rescues || 0} rescues · ${completed ? 'Assignment complete!' : 'Assignment: ' + stats.freezes + '/' + MISSIONS[mission].target} · Best: ${Math.max(career.best, stats.freezes)}`;
@@ -678,14 +742,89 @@ socket.on('matchEnd', () => { resetControls(); });
  * Preselect Single Player + 1v1 so Play works immediately.
  * 30v30 is single-player only: hidden from multiplayer selection.
  */
-const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'glacier' };
+const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'glacier', room: '' };
 
+// Shareable room link: ?room=CODE. Same normalization as the server.
+const URL_ROOM = (() => {
+    try {
+        const raw = new URLSearchParams(location.search).get('room') || '';
+        const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+        return code || null;
+    } catch { return null; }
+})();
+let URL_ROOM_JOINED = false;
+if (URL_ROOM) { MENU.mode = 'multi'; MENU.room = URL_ROOM; }
+
+function toggleCustom() {
+    const panel = document.getElementById('custom-panel');
+    if (panel) panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+}
+function showCustom() {
+    const panel = document.getElementById('custom-panel');
+    if (panel) panel.style.display = 'block';
+}
+// Friends flow: multiplayer + a fresh private room, ready to share.
+function playWithFriends() {
+    selectMode('multi');
+    if (!MENU.room) randomRoom();
+    const input = document.getElementById('room-input');
+    if (input) input.value = MENU.room;
+    showCustom();
+}
+function copyInviteLink() {
+    if (!STATE.roomCode) return;
+    const link = `${location.origin}${location.pathname}?room=${STATE.roomCode}`;
+    const done = () => {
+        const b = document.getElementById('copy-link-btn');
+        if (b) { b.innerText = '✅ LINK COPIED!'; setTimeout(() => { b.innerText = '🔗 COPY INVITE LINK'; }, 2000); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(done).catch(() => { fallbackCopy(link); done(); });
+    } else { fallbackCopy(link); done(); }
+}
+function fallbackCopy(text) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+    } catch {}
+}
+
+function selectRoom(value) {
+    // Mirror the server's normalization: uppercase alphanumerics, max 8.
+    MENU.room = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    const input = document.getElementById('room-input');
+    if (input && input.value !== MENU.room) input.value = MENU.room;
+}
+
+function randomRoom() {
+    const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 5; i++) code += letters[Math.floor(Math.random() * letters.length)];
+    MENU.room = code;
+    const input = document.getElementById('room-input');
+    if (input) input.value = code;
+}
+
+// Room-link landing: show the friends panel with the code prefilled so
+// the player sees where they are headed even before auto-join fires.
+if (URL_ROOM) {
+    try {
+        selectMode('multi');
+        showCustom();
+        const input = document.getElementById('room-input');
+        if (input) input.value = URL_ROOM;
+    } catch {}
+}
 function selectMode(mode) {
     MENU.mode = mode;
     document.getElementById('mode-single').classList.toggle('menu-active', mode === 'single');
     document.getElementById('mode-multi').classList.toggle('menu-active', mode === 'multi');
     // Bot difficulty is single-player only: hide the row in multiplayer.
     document.getElementById('difficulty-row').style.display = (mode === 'single') ? 'flex' : 'none';
+    // Private rooms are multiplayer only: hide the row in single-player.
+    document.getElementById('room-row').style.display = (mode === 'multi') ? 'block' : 'none';
     // 30v30 is single-player only: disable it in multiplayer, and if it
     // was selected, fall back to 1v1.
     const btn30 = document.getElementById('size-30v30');
@@ -720,6 +859,8 @@ function rematch() {
 }
 
 function joinGame() {
+    const quick = document.getElementById('btn-play-quick');
+    if (quick) { quick.disabled = true; quick.innerText = 'JOINING...'; }
     Audio.init();
     Audio.sfx.ui();
     // Emit the join request; the start screen hides only once the server
@@ -728,7 +869,7 @@ function joinGame() {
     btn.disabled = true;
     btn.innerText = 'JOINING...';
     document.getElementById('menu-error').classList.add('hidden');
-    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, classId: MENU.classId });
+    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '' });
 }
 
 let previousFrame = performance.now(), lastInputSent = 0;
@@ -793,6 +934,25 @@ function gameLoop(now = performance.now()) {
     // Border
     ctx.strokeStyle = '#8eabbc'; ctx.lineWidth = 12;
     ctx.strokeRect(0 - cx, 0 - cy, STATE.worldWidth, STATE.worldHeight);
+
+    // Center hill: the one objective, drawn on the field so the goal is
+    // visible in play — dashed circle (radius 260, matching the server),
+    // tinted by the holding team, labeled above the circle.
+    {
+        const hx = STATE.worldWidth / 2 - cx, hy = STATE.worldHeight / 2 - cy;
+        const holder = STATE.hillHolder || null;
+        ctx.save();
+        ctx.setLineDash([14, 10]);
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = holder === 'blue' ? '#3b82f6' : holder === 'red' ? '#ef4444' : '#64748b';
+        ctx.fillStyle = holder === 'blue' ? 'rgba(59,130,246,0.10)' : holder === 'red' ? 'rgba(239,68,68,0.10)' : 'rgba(100,116,139,0.07)';
+        ctx.beginPath(); ctx.arc(hx, hy, 260, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = holder === 'blue' ? '#1d4ed8' : holder === 'red' ? '#b91c1c' : '#475569';
+        ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('🏔 HILL', hx, hy - 272);
+        ctx.restore();
+    }
 
     // Footprints
     for(let i=STATE.footprints.length-1; i>=0; i--) {
