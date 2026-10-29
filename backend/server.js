@@ -61,8 +61,10 @@ const HILL_CENTER_Y = CONFIG.worldHeight / 2;
 const OVERTIME_CAP_TICKS = Number(process.env.OVERTIME_CAP_TICKS) || 3600;
 
 // --- BOT DIFFICULTY LEVELS (single-player only) ---
-// Normal reproduces the original bot exactly. Easy/Hard tune aim noise,
-// charge time, throw range, dash frequency, and top speed.
+// Easy/Hard tune aim noise, charge time, throw range, dash frequency,
+// and top speed. At every difficulty, bots out of throw range steer for
+// the center hill (see computeBotInput) so the hill objective stays
+// live in single-player.
 const DIFFICULTY = {
     easy:   { aimNoise: 0.5,  chargeAt: 40, throwRange: 450, dashProb: 0.002, speedMul: 0.85 },
     normal: { aimNoise: 0.2,  chargeAt: 25, throwRange: 550, dashProb: 0.005, speedMul: 1 },
@@ -417,6 +419,38 @@ function computeBotInput(bot, match) {
     const nx = dx / dist, ny = dy / dist;
 
     if (match.classRoster && best < 550 && match.tick % 45 === 0) useAbility(bot,match);
+
+    // Hill contest (single-player only; bots never exist in multiplayer):
+    // during regulation, when the nearest enemy is out of throw range
+    // and this bot's team has not banked a hill point yet, contest the
+    // hill instead of chasing the enemy. Otherwise the 90-second hill
+    // objective stays hollow in the default one-tap PLAY mode: a bot
+    // that only chases the human never banks a hill point when the
+    // human avoids the hill. Two qualifiers keep this from stalling
+    // the game: it never applies in sudden-death overtime (where only
+    // a freeze matters, and hill points do not bank), and once the team
+    // is on the board the bot hunts normally again — it banks, then
+    // closes in and fights, rather than parking on the hill forever
+    // while an idle human stands far away. On the hill the bot holds
+    // still instead of chasing, so it cannot dither on the hill edge
+    // between steering in and chasing out. Once the enemy closes in,
+    // normal combat behavior below resumes either way.
+    if (!match.overtime && best > diff.throwRange && match.hill[bot.team] === 0) {
+        const hx = HILL_CENTER_X - bot.x, hy = HILL_CENTER_Y - bot.y;
+        const hdist = Math.hypot(hx, hy) || 1;
+        if (hdist > HILL_RADIUS) {
+            bot.inputs.moveX = hx / hdist;
+            bot.inputs.moveY = hy / hdist;
+        } else {
+            bot.inputs.moveX = 0;
+            bot.inputs.moveY = 0;
+        }
+        bot.inputs.gather = !bot.hasBall;
+        bot.inputs.angle = Math.atan2(hy, hx);
+        bot.inputs.dash = false;
+        bot.chargeLevel = 0;
+        return;
+    }
 
     if (!bot.hasBall) {
         // Gather (drift toward the enemy while gathering).
