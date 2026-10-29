@@ -982,3 +982,40 @@ describe('center hill', () => {
         assert.deepEqual(end.match.score, { blue: 0, red: 0 });
     });
 });
+
+describe('bot hill contest', () => {
+    // The default one-tap PLAY mode is single 1v1 vs a bot. The bot must
+    // contest the center hill even when the human avoids it: with no
+    // hill steering, a chase-only bot would follow the human to the
+    // edge and never bank a hill point.
+    const BOT_PORT = 3465;
+    const BOT_URL = `http://127.0.0.1:${BOT_PORT}`;
+    let botProc;
+
+    before(async () => {
+        botProc = spawn('node', [SERVER_FILE], {
+            env: { ...process.env, PORT: String(BOT_PORT), MATCH_DURATION_TICKS: '1800', OVERTIME_CAP_TICKS: '120' },
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        await waitForServerReady(botProc);
+    });
+
+    after(() => {
+        if (botProc && !botProc.killed) botProc.kill();
+    });
+
+    test('a bot with a far, idle human heads for the hill and banks red points', async (t) => {
+        const s = await connectClient(BOT_URL);
+        t.after(() => s.disconnect());
+        const res = await join(s, 'single', 1, 1);
+        assert.equal(res.kind, 'init');
+        // Human sends no input: stands still at the blue spawn, far
+        // from the hill and far from the bot.
+        const box = trackState(s);
+        const held = await waitForState(box,
+            (x) => x.match && x.match.hill && x.match.hill.red >= 1 && x.match.hillHolder === 'red',
+            'bot holds hill and banks red', 30000);
+        assert.ok(held.match.hill.red >= 1, `hill red ${JSON.stringify(held.match.hill)}`);
+        assert.equal(held.match.hillHolder, 'red');
+    });
+});
