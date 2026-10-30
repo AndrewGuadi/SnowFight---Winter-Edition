@@ -7,7 +7,13 @@ const EXIT={blue:{x:480,y:390},red:{x:2520,y:390}};
 const POWER=['snowballFrenzy','snowBoots','fortShield'];
 function other(team){return team==='blue'?'red':'blue'}
 function init(match){
- match.gameMode='pow';match.mission=null;match.obstacles=[];match.pow={
+ match.gameMode='pow';match.mission=null;
+ // Mirrored central lanes; static geometry uses the existing authoritative collision path.
+ match.obstacles=[
+  ...[760,2240].flatMap(x=>[{x,y:610,radius:66,type:'snowbank'},{x,y:1390,radius:66,type:'snowbank'}]),
+  ...[1080,1920].flatMap(x=>[{x,y:390,radius:44,type:'tree'},{x,y:1610,radius:44,type:'tree'}]),
+  {x:1500,y:525,radius:52,type:'snowman'},{x:1500,y:1475,radius:52,type:'snowman'}
+ ];match.pow={
   captures:{blue:0,red:0},rescues:{blue:0,red:0},control:{blue:0,red:0},
   prisoners:{blue:[],red:[]},rescue:{blue:0,red:0},rescuer:{blue:null,red:null},
   gate:{blue:0,red:0},meter:{blue:0,red:0},holder:null,rotation:{blue:0,red:0},
@@ -98,5 +104,16 @@ function publicState(match){
   gates:{blue:p.gate.blue>match.tick,red:p.gate.red>match.tick},flag:{holder:p.holder,meters:p.meter,buffs:p.buffs},
   map:{jails:JAIL,pads:PAD,exits:EXIT,flag:{x:1500,y:1000,radius:FLAG_RADIUS}},phase:p.phase};
 }
-function clampPrison(p){if(!p.captured)return;p.x=Math.max(JAIL[p.team].x-65,Math.min(JAIL[p.team].x+65,p.x));p.y=Math.max(JAIL[p.team].y-60,Math.min(JAIL[p.team].y+60,p.y))}
+function clampPrison(p){
+ if(p.captured){p.x=Math.max(JAIL[p.team].x-65,Math.min(JAIL[p.team].x+65,p.x));p.y=Math.max(JAIL[p.team].y-60,Math.min(JAIL[p.team].y+60,p.y));return}
+ // The POW fort is a protected room: untagged players cannot enter it.
+ for(const team of ['blue','red']){
+  const jail=JAIL[team],hx=90+(p.radius||14),hy=85+(p.radius||14);
+  if(Math.abs(p.x-jail.x)>=hx||Math.abs(p.y-jail.y)>=hy)continue;
+  const dx=p.x-jail.x,dy=p.y-jail.y;
+  if((hx-Math.abs(dx))<(hy-Math.abs(dy)))p.x=jail.x+(dx<0?-hx:hx);
+  else p.y=jail.y+(dy<0?-hy:hy);
+  p.vx=p.vy=0;
+ }
+}
 module.exports={DURATION,RESCUE,GATE,PROTECT,init,onJoin,onHit,tick,finish,publicState,clampPrison,checkWin};
