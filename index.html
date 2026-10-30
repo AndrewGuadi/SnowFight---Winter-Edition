@@ -99,7 +99,7 @@
         #btn-ability span { display:block; font:10px monospace; margin-top:6px; }
         #btn-ability.recharging { background:#496679; border-color:#7595a6; }
         #btn-ability[hidden] { display:none; }
-        @media (min-width:720px) { #start-screen > div { display:grid; grid-template-columns:1fr 1fr; gap:0 24px; padding:28px; } #start-screen > div > h1,#start-screen > div > p,#connection-status { grid-column:1/-1; } .recruit-section { width:auto; margin:0; } .battle-options { display:flex; flex-direction:column; justify-content:center; } .recruit-stage { grid-template-columns:1fr; text-align:center; } #recruit-hero { margin:auto; height:125px; } #recruit-detail { min-height:58px; } }
+        @media (min-width:720px) { #start-screen > div { display:grid; grid-template-columns:1fr 1fr; gap:0 24px; padding:28px; } #start-screen > div > h1,#start-screen > div > p,#connection-status,#front-door,#custom-panel { grid-column:1/-1; } .recruit-section { width:auto; margin:0; } .battle-options { display:flex; flex-direction:column; justify-content:center; } .recruit-stage { grid-template-columns:1fr; text-align:center; } #recruit-hero { margin:auto; height:125px; } #recruit-detail { min-height:58px; } }
         @media (max-width:600px) { .recruit-stage { grid-template-columns:105px 1fr; min-height:145px; gap:8px; } #recruit-hero { width:110px; height:145px; } #recruit-name { font-size:25px; } .recruit-section { padding:12px; } .recruit-roster strong { font-size:11px; } .recruit-roster canvas { width:74px;height:70px; } #recruit-role { font-size:8px; } #recruit-detail { font-size:11px; } #action-zone { right:16px; } }
         .controls-help { font-size:11px; color:#416277; margin:8px 0; text-align:left; }
         .controls-help summary { cursor:pointer; font-weight:700; padding:6px; }
@@ -1005,6 +1005,14 @@ function gameLoop(now = performance.now()) {
         }
         ctx.restore();
     }
+    // Direction marker helps players find the objective before it is visible.
+    if (myPlayer) {
+        const dx=STATE.worldWidth/2-myPlayer.x,dy=STATE.worldHeight/2-myPlayer.y;
+        if (Math.hypot(dx,dy)>300 && (STATE.worldWidth/2<visX0 || STATE.worldWidth/2>visX1 || STATE.worldHeight/2<visY0 || STATE.worldHeight/2>visY1)) {
+            const a=Math.atan2(dy,dx),x=myPlayer.x-cx+Math.cos(a)*58,y=myPlayer.y-cy+Math.sin(a)*58;
+            ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.fillStyle='#d79418';ctx.beginPath();ctx.moveTo(10,0);ctx.lineTo(-6,-6);ctx.lineTo(-3,0);ctx.lineTo(-6,6);ctx.closePath();ctx.fill();ctx.restore();
+        }
+    }
     // Players
     const renderList = Object.values(STATE.players).sort((a,b) => a.y - b.y);
     renderList.forEach(p => { if (p.x > visX0-60 && p.x < visX1+60 && p.y > visY0-60 && p.y < visY1+60) p.draw(cx, cy); });
@@ -1027,6 +1035,7 @@ function gameLoop(now = performance.now()) {
     if (myPlayer) {
         const rw=96, rh=64, rx=CONFIG.viewportWidth-rw-12, ry=110;
         ctx.fillStyle='#173b51cc'; ctx.beginPath(); ctx.roundRect(rx,ry,rw,rh,8); ctx.fill();
+        ctx.strokeStyle='#f8d377';ctx.lineWidth=2;ctx.beginPath();ctx.arc(rx+rw/2,ry+rh/2,5,0,Math.PI*2);ctx.stroke();
         for (const p of Object.values(STATE.players)) {
             ctx.fillStyle=p.id===STATE.id?'#fff':p.team===STATE.team?'#67d7ff':'#ff967e';
             ctx.globalAlpha=p.isFrozen?0.3:1;
@@ -1212,5 +1221,6 @@ gameLoop();
 </script>
 </body>
 </html>
+
 
 
