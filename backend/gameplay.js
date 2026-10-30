@@ -6,7 +6,7 @@ function sanitizeInput(data) {
         angle: Math.atan2(Math.sin(data.angle), Math.cos(data.angle)),
         cancelCharge: data.cancelCharge === true,
         ability: data.ability === true,
-        dash: data.dash === true, gather: data.gather === true,
+        dash: data.dash === true, gather: data.gather === true, interact: data.interact === true,
         throwStart: data.throwStart === true, throwRelease: data.throwRelease === true };
 }
 // Earliest intersection of a swept snowball with a circle, or null.
