@@ -3,9 +3,8 @@ const path = require('path');
 const { sanitizeInput, segmentHit } = require('./gameplay');
 const { CLASSES, classId, shotPattern, canBuild } = require('./classes');
 const {makeNeighborhood,PARENT} = require('./neighborhood');
-const {MISSIONS,AGGRESSION,aggressionId,missionProgress}=require('./missions');
-const { publicPlayer, publicSnowball } = require('./snapshot');
 const app = express();
+const { publicPlayer, publicSnowball } = require('./snapshot');
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
 app.get('/health', (_req, res) => res.json({ ok: true, simulationHz: 60, snapshotHz: 30 }));
@@ -72,8 +71,8 @@ const OVERTIME_CAP_TICKS = Number(process.env.OVERTIME_CAP_TICKS) || 3600;
 // looser aim, shorter reach, and slightly slower than a human, so a new
 // player can dodge, outrun, and outplay them. Hard keeps the original edge.
 const DIFFICULTY = {
-    easy:   { aimNoise: 0.9,  chargeAt: 50, throwRange: 370, dashProb: 0.001, speedMul: 0.72 },
-    normal: { aimNoise: 0.5, chargeAt: 40, throwRange: 470, dashProb: 0.002, speedMul: 0.9 },
+    easy:   { aimNoise: 0.5,  chargeAt: 40, throwRange: 450, dashProb: 0.002, speedMul: 0.85 },
+    normal: { aimNoise: 0.35, chargeAt: 35, throwRange: 500, dashProb: 0.003, speedMul: 0.95 },
     hard:   { aimNoise: 0.08, chargeAt: 15, throwRange: 650, dashProb: 0.01,  speedMul: 1.1 }
 };
 // Extra hit radius (px) for a human's throws in single-player: hitting
@@ -111,8 +110,6 @@ function createMatch(mode, blueCap, redCap, difficulty, roomCode) {
         blueCap,
         redCap,
         difficulty: difficulty || 'normal',
-        aggression: 'balanced',
-        mission: null,
         // Private-room code (multiplayer only); null = open match that
         // any player with the same caps can join.
         roomCode: mode === 'multi' ? (sanitizeRoomCode(roomCode) || null) : null,
@@ -360,7 +357,6 @@ function fireSnowball(p, match, cannon=false) {
         ball.radius=shot.radius; ball.kind=shot.kind;
         match.snowballs.push(ball);
     }
-    if(p.isBot) p.nextAttackTick=match.tick+CLASSES[p.classId].gather+AGGRESSION[match.aggression].pause;
     p.stats.throws++; p.hasBall=false; p.chargeLevel=0;
     match.emit('effect',{type:cannon?'cannon':'throw',x:p.x,y:p.y,id:p.id});
     return true;
@@ -388,7 +384,6 @@ function useAbility(p,match) {
 // match's difficulty (see DIFFICULTY; hard is the sharpest).
 function computeBotInput(bot, match) {
     const diff = difficultyOf(match);
-    const temperament=AGGRESSION[match.aggression];
     if (bot.isFrozen) {
         bot.inputs.moveX = 0; bot.inputs.moveY = 0;
         bot.inputs.dash = false; bot.inputs.gather = false;
@@ -414,7 +409,7 @@ function computeBotInput(bot, match) {
     const dist = Math.hypot(dx, dy) || 1;
     const nx = dx / dist, ny = dy / dist;
 
-    if (temperament.abilities && match.classRoster && best < 550 && match.tick % 45 === 0) useAbility(bot,match);
+    if (match.classRoster && best < 550 && match.tick % 45 === 0) useAbility(bot,match);
 
     // Hill contest (single-player only; bots never exist in multiplayer):
     // during regulation, when the nearest enemy is out of throw range
@@ -450,7 +445,7 @@ function computeBotInput(bot, match) {
 
     if (!bot.hasBall) {
         // Gather (drift toward the enemy while gathering).
-        bot.inputs.moveX = nx*temperament.chase; bot.inputs.moveY = ny*temperament.chase;
+        bot.inputs.moveX = nx; bot.inputs.moveY = ny;
         bot.inputs.gather = true;
         bot.inputs.angle = Math.atan2(ny, nx);
         bot.inputs.dash = false;
@@ -463,13 +458,13 @@ function computeBotInput(bot, match) {
         // In range: hold still and charge. Release is handled in tickMatch
         // once chargeLevel reaches the difficulty's chargeAt ticks.
         bot.inputs.moveX = 0; bot.inputs.moveY = 0;
-        if (bot.chargeLevel === 0 && match.tick >= (bot.nextAttackTick||0)) bot.chargeLevel = 1;
+        if (bot.chargeLevel === 0) bot.chargeLevel = 1;
         bot.inputs.dash = false;
     } else {
         // Out of range: chase, and cancel any partial charge.
-        bot.inputs.moveX = nx*temperament.chase; bot.inputs.moveY = ny*temperament.chase;
+        bot.inputs.moveX = nx; bot.inputs.moveY = ny;
         bot.chargeLevel = 0;
-        bot.inputs.dash = temperament.chase===1 && Math.random() < diff.dashProb; // occasional dash while moving
+        bot.inputs.dash = Math.random() < diff.dashProb; // occasional dash while moving
     }
 }
 
@@ -486,9 +481,7 @@ function matchStateInfo(match) {
         hillHolder: match.hillHolder,
         overtime: match.overtime,
         ended: match.ended,
-        winner: match.winner,
-        mission: missionProgress(match),
-        aggression: match.aggression
+        winner: match.winner
     };
 }
 
@@ -522,7 +515,6 @@ function endMatch(match, suddenDeath) {
             : match.score.blue > match.score.red ? 'blue'
             : match.score.red > match.score.blue ? 'red' : 'draw';
     }
-    if(match.mission) {const spec=MISSIONS[match.mission];if(spec.metric!=='win') match.winner=(spec.metric==='hill'?match.hill.blue:match.score.blue)>=spec.target?'blue':'red';else if(match.winner==='draw')match.winner='red';}
     match.emit('matchEnd', { winner: match.winner, score: match.score, hill: match.hill });
 }
 
@@ -544,7 +536,6 @@ function tickMatch(match) {
         if (!match.overtime) {
             match.timerTicks++;
             if (match.timerTicks >= MATCH_DURATION_TICKS) {
-                if(match.mission) {endMatch(match);broadcastState(match);return;}
                 const hillTied = match.hill.blue === match.hill.red;
                 const scoreTied = match.score.blue === match.score.red;
                 if (hillTied && scoreTied) {
@@ -702,8 +693,6 @@ function tickMatch(match) {
     match.structures = match.structures.filter(o=>o.hp>0);
     match.snowballs = match.snowballs.filter(b => b.active);
 
-    if(match.mission && !match.ended) {const goal=missionProgress(match);if(goal.metric!=='win' && goal.progress>=goal.target)endMatch(match);}
-
     // 4. Broadcast State (match room only).
     if (match.tick % 2 === 0) broadcastState(match);
 }
@@ -743,15 +732,11 @@ io.on('connection', (socket) => {
 
     socket.on('join', (data) => {
         const mode = data && data.mode;
-        let blue = Number(data && data.blue);
-        let red = Number(data && data.red);
+        const blue = Number(data && data.blue);
+        const red = Number(data && data.red);
         // Bot difficulty: single-player only; anything else defaults to
         // normal (multiplayer has no bots, so it is ignored there).
-        let difficulty = difficultyValid(data && data.difficulty);
-        const missionId = mode==='single' && data && data.mission;
-        if(missionId && !Object.hasOwn(MISSIONS,missionId)){socket.emit('joinError',{message:'Unknown mission.'});return;}
-        const spec=missionId?MISSIONS[missionId]:null;
-        if(spec){blue=spec.blue;red=spec.red;difficulty=spec.difficulty;}
+        const difficulty = difficultyValid(data && data.difficulty);
         const recruit = classId(data && data.classId);
         // Private-room code: multiplayer only; ignored in single-player.
         const room = mode === 'multi' ? sanitizeRoomCode(data && data.room) : null;
@@ -768,8 +753,6 @@ io.on('connection', (socket) => {
         if (mode === 'single') {
             // Human on blue; bots fill every remaining slot on both teams.
             match = createMatch('single', blue, red, difficulty);
-            match.mission=spec?spec.id:null;
-            match.aggression=spec?spec.aggression:aggressionId(data && data.aggression);
             match.classRoster = recruit !== 'classic';
             match.players[socket.id] = new ServerPlayer(socket.id, 'blue', false, recruit);
             for (let i = 0; i < blue - 1; i++) addBot(match, 'blue');
@@ -826,7 +809,7 @@ io.on('connection', (socket) => {
             team: match.players[socket.id].team,
             classId: recruit,
             classes: CLASSES,
-            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty, mission: missionProgress(match), aggression: match.aggression, roomCode: match.roomCode || null }
+            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty, roomCode: match.roomCode || null }
         });
     });
 
