@@ -672,6 +672,7 @@ socket.on('state', (serverData) => {
     }
     STATE.structures = serverData.structures || [];
     STATE.activeMission=serverData.match?.mission || null;
+    STATE.waitingForPlayers=STATE.mode==='multi' && serverData.match?.timeLeft===null;
     STATE.serverTick=serverData.tick;
     STATE.snowballs = serverData.snowballs;
     STATE.snapshotAt = performance.now();
@@ -877,7 +878,8 @@ function randomRoom() {
 if (URL_ROOM) {
     try {
         selectMode('multi');
-        showCustom();
+        // Room links join the simple 5v5 flow without opening Advanced settings.
+        selectSize(5,5);
         const input = document.getElementById('room-input');
         if (input) input.value = URL_ROOM;
     } catch {}
@@ -1170,13 +1172,25 @@ function moveJoy(e) {
     if (length>6 && aimPointer===null) STATE.inputs.angle=Math.atan2(dy,dx);
 }
 bindPointer(joyZone, moveJoy, moveJoy, () => { STATE.inputs.moveX=STATE.inputs.moveY=0; joyKnob.style.transform='translate(-50%, -50%)'; });
-let aimOrigin;
+let aimOrigin, draggedAim=false;
 function dragAim(e) {
     const dx=e.clientX-aimOrigin.x, dy=e.clientY-aimOrigin.y;
-    if (Math.hypot(dx,dy)>8) STATE.inputs.angle=Math.atan2(dy,dx);
+    if (Math.hypot(dx,dy)>8) { draggedAim=true; STATE.inputs.angle=Math.atan2(dy,dx); }
 }
-bindPointer(btnThrow, e => { aimPointer=e.pointerId; aimOrigin={x:e.clientX,y:e.clientY}; STATE.inputs.throwStart=true; }, dragAim,
-    (_e,cancel) => { aimPointer=null; STATE.inputs.throwRelease=!cancel; if(cancel) resetControls(); });
+function practiceTapAim() {
+    // Optional beginner assist in solo practice only; never snaps aim in PvP.
+    if(STATE.mode!=='single')return;
+    const me=STATE.players[STATE.id];if(!me)return;
+    let best=430,target=null;
+    for(const player of Object.values(STATE.players)) {
+        if(player.id===me.id || player.team===me.team || player.isFrozen)continue;
+        const distance=Math.hypot(player.x-me.x,player.y-me.y);
+        if(distance<best){best=distance;target=player;}
+    }
+    if(target) STATE.inputs.angle=Math.atan2(target.y-me.y,target.x-me.x);
+}
+bindPointer(btnThrow, e => { aimPointer=e.pointerId; draggedAim=false; aimOrigin={x:e.clientX,y:e.clientY}; STATE.inputs.throwStart=true; }, dragAim,
+    (_e,cancel) => { if(!cancel&&!draggedAim)practiceTapAim(); aimPointer=null; STATE.inputs.throwRelease=!cancel; if(cancel) resetControls(); });
 bindPointer(btnAbility, () => STATE.inputs.ability=true, () => {}, () => {});
 btnAbility.addEventListener('click', e=>{if(e.detail===0 && STATE.id && !STATE.ended) STATE.inputs.ability=true;});
 bindPointer(btnDash, () => STATE.inputs.dash=true, () => {}, () => {});
@@ -1327,6 +1341,7 @@ function updateFieldHud() {
     document.getElementById('assignment').textContent=`${m.label} / ${Math.min(hits,m.target)} OF ${m.target}${hits>=m.target?' · COMPLETE':''}`;
     if(STATE.activeMission){const m=STATE.activeMission;document.getElementById('assignment').textContent=m.metric==='win'?`${m.name.toUpperCase()} · WIN THIS ROUND`:`${m.name.toUpperCase()} · ${Math.min(m.progress,m.target)}/${m.target} ${m.metric.toUpperCase()}`;}
     document.getElementById('combat-status').textContent=p.isFrozen ? `SNOWED IN · back in ${Math.ceil(p.freezeTicks/60)}s` : !p.hasBall ? (p.autoReload ? `ROLLING A SNOWBALL ${Math.round(p.gatherProgress/(STATE.classConfig[p.classId]?.gather || 45)*100)}%` : (p.gatherProgress ? `PACKING ${Math.round(p.gatherProgress/(STATE.classConfig[p.classId]?.gather || 45)*100)}%` : 'NO SNOWBALL · HOLD PACK')) : p.chargeLevel>0 ? 'AIMING · RELEASE TO THROW' : 'READY TO THROW';
+    if(STATE.waitingForPlayers) document.getElementById('combat-status').textContent='WAITING FOR ANOTHER PLAYER · INVITE A FRIEND';
     document.getElementById('charge-indicator').style.strokeDashoffset=289*(1-p.chargeLevel/60);
     btnDash.style.opacity=p.dashCooldownTimer>0?'0.45':'1';
     btnThrow.style.opacity=p.hasBall?'1':'0.45';

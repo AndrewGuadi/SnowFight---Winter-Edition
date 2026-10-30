@@ -78,7 +78,7 @@
     const connected=()=>{online.disabled=!socket.connected;practice.disabled=!socket.connected;};
     socket.on('connect',()=>{connected();practice.textContent='PRACTICE WITH BOTS';});
     socket.on('disconnect',connected);
-    socket.on('joinError',connected);
+    socket.on('joinError',()=>{connected();practice.textContent='PRACTICE WITH BOTS';});
     connected();
     online.addEventListener('click',()=>{
         if(!socket.connected)return;
