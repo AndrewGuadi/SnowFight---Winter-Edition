@@ -55,7 +55,7 @@
  overlay.style.cssText='position:absolute;right:12px;bottom:95px;width:170px;height:82px;pointer-events:none;z-index:39;border:2px solid #fff9;border-radius:12px;box-shadow:0 6px 18px #153e5588';
  overlay.hidden=true;document.body.appendChild(overlay);
  socket.on('state',state=>{
-  const pow=state.match?.pow;overlay.hidden=!pow;if(!pow)return;
+  const pow=state.match?.pow;window.SNOW_POW_WORLD=pow||null;overlay.hidden=!pow;if(!pow)return;
   const c=overlay.getContext('2d');c.clearRect(0,0,300,145);c.fillStyle='#cbe9f4';c.fillRect(0,0,300,145);
   const point=(x,y)=>[x/10,y/2000*145];
   for(const team of ['blue','red']){
@@ -70,6 +70,37 @@
    c.beginPath();c.arc(x,y,p.id===STATE.id?4:2.8,0,Math.PI*2);c.fill();
   }
  });
+ // Render the POW forts at the same coordinates used by server collision and rescue rules.
+ window.drawSnowFortWorld=function(g,cx,cy,now){
+  const data=window.SNOW_POW_WORLD;if(!data)return;
+  const map=data.map;g.save();
+  const t=now*0.003;
+  for(const team of ['blue','red']){
+   const jail=map.jails[team],x=jail.x-cx,y=jail.y-cy;
+   const color=team==='blue'?'#3b94c3':'#d67076',dark=team==='blue'?'#1e557f':'#8c3949';
+   g.fillStyle='#193d5230';g.fillRect(x-104,y-90,208,178);
+   g.fillStyle=color+'50';g.fillRect(x-87,y-77,174,151);
+   g.strokeStyle=dark;g.lineWidth=10;g.strokeRect(x-88,y-77,176,153);
+   for(let i=0;i<7;i++){let rx=x-81+i*27;g.strokeStyle='#f7fcff';g.lineWidth=5;g.beginPath();g.moveTo(rx,y-75);g.lineTo(rx,y+75);g.stroke()}
+   g.fillStyle='#fff';g.textAlign='center';g.font='900 21px system-ui';g.fillText(team.toUpperCase()+' POW FORT',x,y-109);
+   const pad=map.pads[team],px=pad.x-cx,py=pad.y-cy;
+   g.fillStyle=data.gates[team]?'#8affaa70':'#ffdf7a90';
+   g.strokeStyle=data.gates[team]?'#4bcd72':'#e3a329';g.lineWidth=4;
+   g.beginPath();g.arc(px,py,73,0,Math.PI*2);g.fill();g.stroke();
+   g.fillStyle='#204a63';g.font='bold 17px system-ui';
+   g.fillText(data.gates[team]?'GATE OPEN':'HOLD R · RESCUE',px,py-83);
+   if(data.rescue[team]){g.strokeStyle='#fff';g.lineWidth=8;g.beginPath();g.arc(px,py,66,-Math.PI/2,-Math.PI/2+(Math.PI*2*data.rescue[team]/120));g.stroke()}
+  }
+  const fx=map.flag.x-cx,fy=map.flag.y-cy;
+  g.strokeStyle=data.flag.holder==='blue'?'#428cbf':data.flag.holder==='red'?'#d66970':'#ecc366';
+  g.fillStyle='#f8da7960';g.lineWidth=6;g.setLineDash([18,9]);
+  g.beginPath();g.arc(fx,fy,map.flag.radius,0,Math.PI*2);g.fill();g.stroke();g.setLineDash([]);
+  g.strokeStyle='#426176';g.lineWidth=7;g.beginPath();g.moveTo(fx,fy+20);g.lineTo(fx,fy-115);g.stroke();
+  g.fillStyle=data.flag.holder==='blue'?'#398bb8':data.flag.holder==='red'?'#d5686a':'#f3ca52';
+  g.beginPath();g.moveTo(fx,fy-115);g.lineTo(fx+85,fy-89+Math.sin(t)*6);g.lineTo(fx,fy-64);g.closePath();g.fill();
+  g.textAlign='center';g.font='900 22px system-ui';g.fillStyle='#244b62';g.fillText('SNOWFORT POWER FLAG',fx,fy-233);
+  g.restore();
+ };
  function launchAdventure(){
   if(window.SnowAdventure?.start)window.SnowAdventure.start();
  }
