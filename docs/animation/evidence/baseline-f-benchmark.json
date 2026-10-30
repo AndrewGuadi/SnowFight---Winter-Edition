@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-30T21:12:47.981Z",
+  "label": "baseline-f",
+  "browser": "Chromium 141.0.7390.37",
+  "node": "v20.20.2",
+  "viewport": {
+    "width": 844,
+    "height": 390
+  },
+  "durationMs": 5000,
+  "scenarios": [
+    {
+      "samples": 300,
+      "frameMs": {
+        "p50": 16.7,
+        "p95": 16.7,
+        "p99": 16.8
+      },
+      "callbackMs": {
+        "p50": 0.1,
+        "p95": 0.6,
+        "p99": 0.6
+      },
+      "loadMs": 212,
+      "heapBytes": 10000000,
+      "players": 10,
+      "scenario": "5v5 solo bots"
+    },
+    {
+      "samples": 300,
+      "frameMs": {
+        "p50": 16.7,
+        "p95": 16.8,
+        "p99": 16.8
+      },
+      "callbackMs": {
+        "p50": 0.1,
+        "p95": 0.6,
+        "p99": 0.8
+      },
+      "loadMs": 212,
+      "heapBytes": 10000000,
+      "players": 20,
+      "scenario": "10v10 solo bots"
+    },
+    {
+      "samples": 300,
+      "frameMs": {
+        "p50": 16.7,
+        "p95": 16.7,
+        "p99": 16.8
+      },
+      "callbackMs": {
+        "p50": 0.1,
+        "p95": 0.9,
+        "p99": 1
+      },
+      "loadMs": 212,
+      "heapBytes": 10000000,
+      "players": 60,
+      "scenario": "30v30 solo bots"
+    }
+  ]
+}
