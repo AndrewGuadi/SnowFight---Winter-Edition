@@ -1019,3 +1019,17 @@ describe('bot hill contest', () => {
         assert.equal(held.match.hillHolder, 'red');
     });
 });
+
+
+describe('contest invite regression', () => {
+    test('invite code joins the existing room even when recipient has default team sizes', async t => {
+        const host=await connectClient(), guest=await connectClient();
+        t.after(()=>{host.disconnect();guest.disconnect()});
+        const first=await joinExtra(host,{mode:'multi',blue:5,red:5,room:'INVITE77'});
+        const second=await joinExtra(guest,{mode:'multi',blue:1,red:1,room:'INVITE77'});
+        assert.equal(first.kind,'init');assert.equal(second.kind,'init');
+        assert.equal(second.data.match.blueCap,5);assert.equal(second.data.match.redCap,5);
+        const box=trackState(guest);
+        await waitForState(box,s=>s.players[host.id]&&s.players[guest.id],'both in same 5v5 room');
+    });
+});

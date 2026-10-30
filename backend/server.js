@@ -174,15 +174,14 @@ function findMultiMatch(blueCap, redCap) {
     return null;
 }
 
-// The (single) live multi match carrying this private-room code and
-// these caps, whether or not it still has an open slot. Ended matches
-// never match: a finished room's code is free to start a fresh match.
-function findRoomMatch(roomCode, blueCap, redCap) {
+// A live private room is identified by its code. Its creator determines
+// team sizes; joining clients inherit those settings. Ended rooms are
+// excluded, so their codes can be used for a new match.
+function findRoomMatch(roomCode) {
     for (const match of matches.values()) {
         if (match.mode !== 'multi') continue;
         if (match.ended) continue;
         if (match.roomCode !== roomCode) continue;
-        if (match.blueCap !== blueCap || match.redCap !== redCap) continue;
         return match;
     }
     return null;
@@ -579,6 +578,7 @@ function tickMatch(match) {
             }
         }
         const holder = blueIn > redIn ? 'blue' : redIn > blueIn ? 'red' : null;
+        if (holder !== match.hillHolder) match.hillSecondTicks = 0;
         match.hillHolder = holder;
         if (holder) {
             if (++match.hillSecondTicks >= 60) {
@@ -760,7 +760,7 @@ io.on('connection', (socket) => {
             // Private room: friends with the same code share one match.
             // A full room rejects late joiners rather than silently
             // splitting them into a second match under the same code.
-            match = findRoomMatch(room, blue, red);
+            match = findRoomMatch(room);
             if (match && !roomHasOpenSlot(match)) {
                 socket.emit('joinError', { message: 'Room is full — try another code.' });
                 return;
@@ -783,8 +783,8 @@ io.on('connection', (socket) => {
             const blues = countTeam(match, 'blue');
             const reds = countTeam(match, 'red');
             let team;
-            if (blues <= reds && blues < blue) team = 'blue';
-            else if (reds < red) team = 'red';
+            if (blues <= reds && blues < match.blueCap) team = 'blue';
+            else if (reds < match.redCap) team = 'red';
             else {
                 // Both teams full (should not happen: open matches are
                 // only picked with a slot, rooms reject when full):
@@ -857,5 +857,6 @@ if (require.main === module) {
     http.listen(PORT, () => console.log(`Snowbrawl Server running on port ${PORT}`));
 }
 module.exports = { ServerPlayer, ServerSnowball, createMatch, tickMatch, fireSnowball, useAbility, matches };
+
 
 

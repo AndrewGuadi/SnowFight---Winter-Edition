@@ -7,10 +7,10 @@ const path=require('node:path'),os=require('node:os'),assert=require('node:asser
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE||undefined,args:['--no-sandbox']});
  try{
  const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:3461');await page.locator('#btn-play:not([disabled])').waitFor();
+ await page.goto('http://127.0.0.1:3461');await page.locator('#btn-play-quick:not([disabled])').waitFor();await page.locator('#front-door button[onclick="toggleCustom()"]').click();
  await page.screenshot({path:path.join(os.tmpdir(),'recruits-menu-mobile.png')});
  for(const id of ['glacier','snowbug','frostweaver']) {
-   if(id!=='glacier'){await page.reload();await page.locator('#btn-play:not([disabled])').waitFor();}
+   if(id!=='glacier'){await page.reload();await page.locator('#btn-play-quick:not([disabled])').waitFor();await page.locator('#front-door button[onclick="toggleCustom()"]').click();}
    await page.locator(`[data-recruit="${id}"]`).click();await page.locator('#mode-multi').click();await page.locator('#btn-play').click();
    await page.waitForFunction(id=>STATE.players[STATE.id]?.classId===id,id);
    assert.equal(await page.locator('#btn-ability').isVisible(),true);
@@ -26,9 +26,10 @@ const path=require('node:path'),os=require('node:os'),assert=require('node:asser
  await page.setViewportSize({width:844,height:390});await page.waitForTimeout(400);await page.screenshot({path:path.join(os.tmpdir(),'recruits-landscape.png')});
  assert.ok(await page.locator('#btn-ability').isVisible());
  const buttons=await page.locator('#btn-ability').boundingBox();assert.ok(buttons.x>=0 && buttons.x+buttons.width<=844 && buttons.y+buttons.height<=390);
- await page.setViewportSize({width:1280,height:800});await page.reload();await page.locator('#btn-play:not([disabled])').waitFor();await page.screenshot({path:path.join(os.tmpdir(),'recruits-menu-desktop.png')});
+ await page.setViewportSize({width:1280,height:800});await page.reload();await page.locator('#btn-play-quick:not([disabled])').waitFor();await page.locator('#front-door button[onclick="toggleCustom()"]').click();await page.screenshot({path:path.join(os.tmpdir(),'recruits-menu-desktop.png')});
  await page.locator('#mode-multi').click();await page.locator('#btn-play').click();await page.waitForFunction(()=>STATE.players[STATE.id]?.classId==='glacier');await page.keyboard.press('e');await page.waitForFunction(()=>STATE.players[STATE.id].guardTicks>0);
- await page.reload();await page.locator('#btn-play:not([disabled])').waitFor();await page.locator('[data-recruit=classic]').click();await page.locator('#mode-multi').click();await page.locator('#btn-play').click();await page.waitForFunction(()=>STATE.players[STATE.id]?.classId==='classic');assert.equal(await page.locator('#btn-ability').isVisible(),false);
+ await page.reload();await page.locator('#btn-play-quick:not([disabled])').waitFor();await page.locator('#front-door button[onclick="toggleCustom()"]').click();await page.locator('[data-recruit=classic]').click();await page.locator('#mode-multi').click();await page.locator('#btn-play').click();await page.waitForFunction(()=>STATE.players[STATE.id]?.classId==='classic');assert.equal(await page.locator('#btn-ability').isVisible(),false);
  assert.deepEqual(errors,[]);console.log('PASS three class selections, server-confirmed touch abilities, cooldowns, cover creation, responsive portraits and landscape, no JS errors');
  }finally{await browser.close();server.kill();}
 })().catch(e=>{console.error(e);process.exitCode=1});
+
