@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const { sanitizeInput, segmentHit } = require('./gameplay');
 const { CLASSES, classId, shotPattern, canBuild } = require('./classes');
+const {makeNeighborhood,PARENT} = require('./neighborhood');
 const app = express();
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
@@ -97,20 +98,6 @@ const matches = new Map(); // id -> match
 let matchCounter = 0;
 let botCounter = 0;
 
-// Same 60-obstacle generator as the original server (per match now).
-function makeObstacles() {
-    const obstacles = [];
-    for (let i = 0; i < 60; i++) {
-        const type = Math.random();
-        obstacles.push({
-            x: Math.random() * CONFIG.worldWidth,
-            y: Math.random() * CONFIG.worldHeight,
-            radius: type > 0.6 ? 30 : 20, // 30=Tree, 20=Rock/Snowman
-            type: type > 0.6 ? 'tree' : (type > 0.3 ? 'rock' : 'snowman')
-        });
-    }
-    return obstacles;
-}
 
 function createMatch(mode, blueCap, redCap, difficulty, roomCode) {
     const id = `match-${Date.now().toString(36)}-${++matchCounter}`;
@@ -145,7 +132,8 @@ function createMatch(mode, blueCap, redCap, difficulty, roomCode) {
         structures: [],
         structureSerial: 0,
         classRoster: false,
-        obstacles: makeObstacles(),
+        obstacles: makeNeighborhood(),
+        parentReactionUntil: 0,
         // All match traffic is scoped to the room — never the global io.
         emit(event, data) { io.to(id).emit(event, data); },
         emitVolatile(event, data) { io.to(id).volatile.emit(event, data); }
@@ -657,6 +645,13 @@ function tickMatch(match) {
             const t = segmentHit(fromX, fromY, ball.x, ball.y, p.x, p.y, p.radius + ball.radius + bonus);
             if (t !== null && t < first) { first = t; impact = { player: p }; }
         }
+        // The parent is a nonblocking character: a nearby throw triggers a
+        // room-scoped reaction but never changes collision, score or physics.
+        const parentT=segmentHit(fromX,fromY,ball.x,ball.y,PARENT.x,PARENT.y,PARENT.radius+ball.radius);
+        if(parentT!==null && parentT<=first && match.tick>=match.parentReactionUntil) {
+            match.parentReactionUntil=match.tick+180;
+            match.emit('effect',{type:'parent_react',x:PARENT.x,y:PARENT.y});
+        }
         if (impact) {
             ball.active = false;
             if (impact.player) {
@@ -857,5 +852,6 @@ if (require.main === module) {
     http.listen(PORT, () => console.log(`Snowbrawl Server running on port ${PORT}`));
 }
 module.exports = { ServerPlayer, ServerSnowball, createMatch, tickMatch, fireSnowball, useAbility, matches };
+
 
 

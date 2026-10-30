@@ -9,7 +9,7 @@ const {spawn}=require('node:child_process');
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE || undefined,args:['--no-sandbox']});
  try {
  const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:3460');await page.locator('#btn-play:not([disabled])').waitFor();
+ await page.goto('http://127.0.0.1:3460');await page.locator('#btn-play-quick:not([disabled])').waitFor();await page.locator('#front-door button[onclick="toggleCustom()"]').click();
  await page.locator('#mode-multi').click();await page.locator('#btn-play').click();await page.locator('#start-screen').waitFor({state:'hidden'});
  const cdp=await page.context().newCDPSession(page);const bounds={};for(const id of ['joystick-zone','btn-throw','btn-gather','btn-dash'])bounds[id]=await page.locator('#'+id).boundingBox();
  const center=id=>({x:bounds[id].x+bounds[id].width/2,y:bounds[id].y+bounds[id].height/2});
@@ -36,4 +36,5 @@ const {spawn}=require('node:child_process');
  assert.deepEqual(errors,[]);console.log('PASS: portrait/landscape render, simultaneous move+aim, release-to-throw, gather, cancellation, authoritative results, deduplicated progression, rematch; no JS errors');
  } finally {await browser.close();server.kill();}
 })().catch(e=>{console.error(e);process.exitCode=1});
+
 

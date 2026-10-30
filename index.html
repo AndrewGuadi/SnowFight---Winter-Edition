@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="assets/ui.css">
     <script src="assets/socket.io.min.js"></script>
     <script src="assets/recruits.js"></script>
+    <script src="assets/neighborhood.js"></script>
     <style>
         :root { --btn-scale: 1; }
         body { 
@@ -581,6 +582,7 @@ socket.on('init', (data) => {
     STATE.classId = data.classId || 'classic';
     STATE.structures = [];
     document.getElementById('btn-ability').hidden = STATE.classId === 'classic';
+    STATE.parentReactUntil=0;
     STATE.id = data.id;
     STATE.team = data.team;
     STATE.worldWidth = data.width;
@@ -629,6 +631,7 @@ socket.on('state', (serverData) => {
         if (!serverData.players[id]) delete STATE.players[id];
     }
     STATE.structures = serverData.structures || [];
+    STATE.serverTick=serverData.tick;
     STATE.snowballs = serverData.snowballs;
     STATE.snapshotAt = performance.now();
     updateFieldHud();
@@ -661,6 +664,7 @@ socket.on('state', (serverData) => {
 
 socket.on('abilityDenied', data => { const el=document.getElementById('ability-clock');el.textContent=data.reason;STATE.abilityNoticeUntil=performance.now()+1500; });
 socket.on('effect', (data) => {
+    if(data.type==='parent_react') {STATE.parentReactUntil=performance.now()+1800;createParticles(data.x,data.y,'#fff',12);}
     if (['throw','cannon'].includes(data.type) && STATE.players[data.id]) STATE.players[data.id].recoil=1;
     if (['guard','guard_hit','build','shatter','cannon'].includes(data.type)) {
         createParticles(data.x,data.y,data.type==='cannon'?'#ffd79a':'#c4f7ff',data.type==='shatter'?24:12);
@@ -924,8 +928,10 @@ function gameLoop(now = performance.now()) {
     ctx.scale(zoom, zoom);
     ctx.translate(-vw / 2, -vh / 2);
 
+    drawNeighborhoodGround(ctx,cx,cy,now,reducedMotion);
+
     // Grid (aligned to world coordinates, so it stays put when zooming)
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 2; ctx.beginPath();
     const gridSize = 100;
     for(let wx = Math.floor(visX0 / gridSize) * gridSize; wx <= visX1; wx += gridSize) { ctx.moveTo(wx - cx, visY0 - cy); ctx.lineTo(wx - cx, visY1 - cy); }
     for(let wy = Math.floor(visY0 / gridSize) * gridSize; wy <= visY1; wy += gridSize) { ctx.moveTo(visX0 - cx, wy - cy); ctx.lineTo(visX1 - cx, wy - cy); }
@@ -950,7 +956,10 @@ function gameLoop(now = performance.now()) {
         ctx.setLineDash([]);
         ctx.fillStyle = holder === 'blue' ? '#1d4ed8' : holder === 'red' ? '#b91c1c' : '#475569';
         ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
-        ctx.fillText('🏔 HILL', hx, hy - 272);
+        ctx.fillText('SNOW FORT', hx, hy - 272);
+        // A flag marks the objective, while the circle remains the scoring area.
+        ctx.strokeStyle='#567a88';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(hx,hy+20);ctx.lineTo(hx,hy-55);ctx.stroke();
+        ctx.fillStyle=holder==='blue'?'#3b82f6':holder==='red'?'#ef4444':'#e6a43a';ctx.beginPath();ctx.moveTo(hx,hy-55);ctx.lineTo(hx+36,hy-44);ctx.lineTo(hx,hy-32);ctx.closePath();ctx.fill();
         ctx.restore();
     }
 
@@ -974,15 +983,23 @@ function gameLoop(now = performance.now()) {
         ctx.fillStyle = 'rgba(0,0,30,0.15)'; ctx.beginPath(); ctx.ellipse(dx, dy + obs.radius/2, obs.radius, obs.radius*0.4, 0, 0, Math.PI*2); ctx.fill();
         
         if (obs.type === 'tree') {
-            ctx.fillStyle = '#1e4620'; ctx.beginPath(); ctx.moveTo(dx, dy-55); ctx.lineTo(dx+25, dy+10); ctx.lineTo(dx-25, dy+10); ctx.fill();
-            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(dx, dy-55); ctx.lineTo(dx+8, dy-40); ctx.lineTo(dx-8, dy-40); ctx.fill();
+            ctx.fillStyle='#745d4a';ctx.fillRect(dx-5,dy,10,17);
+            for(const [top,half,bottom,color] of [[-70,17,-27,'#315f50'],[-54,24,-8,'#265447'],[-35,30,12,'#204c41']]) {
+                ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(dx,dy+top);ctx.lineTo(dx+half,dy+bottom);ctx.lineTo(dx-half,dy+bottom);ctx.closePath();ctx.fill();
+                ctx.fillStyle='#effbfc';ctx.beginPath();ctx.moveTo(dx,dy+top);ctx.lineTo(dx+half*.42,dy+top+(bottom-top)*.42);ctx.lineTo(dx+half*.12,dy+top+(bottom-top)*.35);ctx.lineTo(dx-half*.14,dy+top+(bottom-top)*.43);ctx.lineTo(dx-half*.42,dy+top+(bottom-top)*.42);ctx.closePath();ctx.fill();
+            }
         } else if (obs.type === 'snowman') {
             ctx.fillStyle = '#f0f9ff'; ctx.beginPath(); ctx.arc(dx, dy, 16, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(dx, dy-20, 12, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(dx, dy-22, 2, 0, Math.PI*2); ctx.fill();
+        } else if (obs.type === 'snowbank') {
+            ctx.fillStyle='#a9cfdc';ctx.beginPath();ctx.ellipse(dx,dy+4,obs.radius,obs.radius*.60,0,0,Math.PI*2);ctx.fill();
+            ctx.fillStyle='#f5fdff';ctx.beginPath();ctx.ellipse(dx-3,dy-5,obs.radius*.84,obs.radius*.54,-.08,0,Math.PI*2);ctx.fill();
         } else {
              ctx.fillStyle = '#78909c'; ctx.beginPath(); ctx.arc(dx, dy, 20, 0, Math.PI*2); ctx.fill();
         }
     });
+
+    if (1500>visX0-80 && 1500<visX1+80 && 650>visY0-100 && 650<visY1+100) drawShovelingParent(ctx,cx,cy,STATE.serverTick||0,performance.now()<(STATE.parentReactUntil||0),reducedMotion);
 
     STATE.structures.forEach(o => { if(o.x>visX0-70 && o.x<visX1+70 && o.y>visY0-70 && o.y<visY1+70) drawIgloo(ctx,o,o.x-cx,o.y-cy); });
 
@@ -1212,5 +1229,6 @@ gameLoop();
 </script>
 </body>
 </html>
+
 
 
