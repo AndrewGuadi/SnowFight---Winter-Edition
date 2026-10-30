@@ -11,6 +11,7 @@
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/ui.css">
     <link rel="stylesheet" href="assets/foundation.css">
+    <link rel="stylesheet" href="assets/modes.css">
     <script src="assets/socket.io.min.js"></script>
     <script src="assets/recruits.js"></script>
     <script src="assets/neighborhood.js"></script>
@@ -597,6 +598,7 @@ socket.on('init', (data) => {
     STATE.structures = [];
     document.getElementById('btn-ability').hidden = STATE.classId === 'classic';
     STATE.activeMission=data.match?.mission || null;
+    MENU.gameMode=data.match?.gameMode||'brawl';
     STATE.mode=data.match?.mode;
     STATE.parentReactUntil=0;
     STATE.id = data.id;
@@ -931,7 +933,7 @@ function joinGame() {
     btn.disabled = true;
     btn.innerText = 'JOINING...';
     document.getElementById('menu-error').classList.add('hidden');
-    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, mission: MENU.mode==='single'?MENU.mission:null, aggression:MENU.aggression, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '', streamlined: MENU.classId==='classic', appearance: window.SNOW_GUEST ? SNOW_GUEST.get() : null });
+    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, mission: MENU.mode==='single'?MENU.mission:null, aggression:MENU.aggression, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '', streamlined: MENU.classId==='classic', gameMode: MENU.gameMode||'brawl', appearance: window.SNOW_GUEST ? SNOW_GUEST.get() : null });
 }
 
 let previousFrame = performance.now(), lastInputSent = 0;
@@ -1251,7 +1253,7 @@ function keyboardMovement() {
         STATE.inputs.angle=Math.atan2(my,mx);
 }
 function resetControls() {
-    Object.assign(STATE.inputs, {moveX:0,moveY:0,dash:false,gather:false,throwStart:false,throwRelease:false,ability:false});
+    Object.assign(STATE.inputs, {moveX:0,moveY:0,dash:false,gather:false,interact:false,throwStart:false,throwRelease:false,ability:false});
     // A cancellation also clears any server-side charge immediately.
     if (STATE.id && socket.connected) socket.emit('input', { ...STATE.inputs, cancelCharge:true });
     if (typeof keys !== 'undefined') keys.clear();
@@ -1405,6 +1407,8 @@ selectRecruit(MENU.classId);
 gameLoop();
 </script>
 <script src="assets/foundation-ui.js"></script>
+<script src="assets/snow-adventure.js"></script>
+<script src="assets/modes-ui.js"></script>
 </body>
 </html>
 
