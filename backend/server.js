@@ -491,7 +491,7 @@ function computeBotInput(bot, match) {
 function matchStateInfo(match) {
     return {
         timeLeft: match.timerStarted
-            ? Math.max(0, Math.ceil((MATCH_DURATION_TICKS - match.timerTicks) / 60))
+            ? Math.max(0, Math.ceil(((match.gameMode==='pow'?POW.DURATION:MATCH_DURATION_TICKS) - match.timerTicks) / 60))
             : null,
         score: match.score,
         hill: match.hill,
