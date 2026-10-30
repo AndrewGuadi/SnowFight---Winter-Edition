@@ -22,3 +22,6 @@
 body.streamlined #btn-dash,body.streamlined #btn-gather,body.streamlined #assignment{display:none!important;}
 body.streamlined #action-zone{bottom:calc(26px + env(safe-area-inset-bottom));}
 @media(max-width:600px){.foundation-row{gap:6px;}.foundation-option{font-size:11px;padding:10px 4px;}.foundation-detail{padding:12px;}}
+
+.foundation-error{padding:10px 12px;background:#fff2ed;color:#a22b24;border:1px solid #e6a49c;border-radius:10px;margin:12px 0;font-size:13px;font-weight:800;}
+.foundation-error[hidden]{display:none!important;}

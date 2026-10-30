@@ -63,6 +63,7 @@
       '  <label>Hat color</label><div class="foundation-swatches" id="foundation-hat" role="group" aria-label="Hat color"></div>',
       '  <button type="button" id="foundation-save" class="foundation-secondary">SAVE MY KID</button>',
       '</section>',
+      '<p id="foundation-error" role="alert" class="foundation-error" hidden></p>',
       '<button type="button" onclick="toggleCustom()" class="foundation-text">⚙ ADVANCED GAME OPTIONS</button>'
     ].join('');
     const online=front.querySelector('#btn-play-online');
@@ -70,6 +71,8 @@
     const friends=front.querySelector('#foundation-friend-panel');
     const kid=front.querySelector('#foundation-kid-panel');
     const code=front.querySelector('#foundation-room');
+    const error=front.querySelector('#foundation-error');
+    const busy=()=>{online.disabled=true;practice.disabled=true;error.hidden=true;};
     const show=(target)=>{
         friends.hidden=target!==friends;
         kid.hidden=target!==kid;
@@ -78,17 +81,21 @@
     const connected=()=>{online.disabled=!socket.connected;practice.disabled=!socket.connected;};
     socket.on('connect',()=>{connected();practice.textContent='PRACTICE WITH BOTS';});
     socket.on('disconnect',connected);
-    socket.on('joinError',()=>{connected();practice.textContent='PRACTICE WITH BOTS';});
+    socket.on('joinError',data=>{
+        connected();practice.textContent='PRACTICE WITH BOTS';
+        error.textContent=data?.message || 'That room could not be joined. Try again.';
+        error.hidden=false;
+    });
     connected();
     online.addEventListener('click',()=>{
         if(!socket.connected)return;
         selectMode('multi');selectSize(5,5);selectRoom('');
-        joinGame();
+        busy();joinGame();
     });
     practice.addEventListener('click',()=>{
         if(!socket.connected)return;
         selectMode('single');
-        joinGame();
+        busy();joinGame();
     });
     front.querySelector('#foundation-friends').addEventListener('click',()=>{
         selectMode('multi');selectSize(5,5);
@@ -105,7 +112,7 @@
         if(!socket.connected)return;
         selectMode('multi');selectSize(5,5);selectRoom(code.value);
         if(!MENU.room)randomRoom();
-        joinGame();
+        busy();joinGame();
     });
     front.querySelector('#foundation-copy').addEventListener('click',()=>{
         selectRoom(code.value);
