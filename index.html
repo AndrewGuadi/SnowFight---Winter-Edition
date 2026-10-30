@@ -137,6 +137,12 @@
                     <button onclick="toggleCustom()" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">⚙️ CUSTOM</button>
                 </div>
             </div>
+            <div class="flex gap-2 mt-3" role="group" aria-label="Control scheme">
+                <button data-scheme="touch" onclick="setScheme('touch');this.blur()" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">📱 TOUCH</button>
+                <button data-scheme="arrows" onclick="setScheme('arrows');this.blur()" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">⌨️ ARROWS</button>
+                <button data-scheme="wasd" onclick="setScheme('wasd');this.blur()" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">🖱️ WASD + MOUSE</button>
+            </div>
+            <p id="scheme-hint" class="field-hint" style="margin:6px 0 0"></p>
             <div id="custom-panel" style="display:none">
             <section class="recruit-section" aria-label="Choose your snow fighter">
                 <div class="recruit-heading"><span>THE SNOWGUARD</span><span>03 RECRUITS</span></div>
@@ -193,7 +199,7 @@
                 <option value="ace">Snow ace · land 10 freezes</option>
             </select>
             <p id="career-line" class="field-hint"></p>
-            <details class="controls-help"><summary>How to play · touch & keyboard</summary><p class="field-hint">Move with the left thumb. Drag THROW to aim; release to fire.<br>Hold PACK for fresh snow. DASH to escape. SPECIAL uses your class ability.<br>Desktop: WASD · mouse aim/hold to throw · G pack · Space dash · E special.</p></details>
+            <details class="controls-help"><summary>How to play · touch & keyboard</summary><p class="field-hint">Touch: left thumb moves, drag THROW to aim, release to fire.<br>Arrows: arrow keys move + aim, hold Space to throw, Shift dash, E special, G pack.<br>WASD + mouse: WASD moves, mouse aims, hold click/F to throw, Space dash, E special, G pack.<br>Pick your scheme above — it saves on this device. Mobile stays touch-first.</p></details>
             <p id="menu-error" class="hidden text-red-500 font-bold text-sm mb-3"></p>
 
             <button id="btn-play" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
@@ -604,6 +610,8 @@ socket.on('init', (data) => {
     }
     // Join accepted: enter the game.
     document.getElementById('start-screen').classList.add('hidden');
+    // Drop button focus so desktop keys reach the game, not the PLAY button.
+    if (document.activeElement) document.activeElement.blur();
     document.getElementById('ui-layer').classList.remove('hidden');
     document.getElementById('controls-layer').classList.remove('hidden');
 });
@@ -1090,10 +1098,50 @@ bindPointer(btnAbility, () => STATE.inputs.ability=true, () => {}, () => {});
 btnAbility.addEventListener('click', e=>{if(e.detail===0 && STATE.id && !STATE.ended) STATE.inputs.ability=true;});
 bindPointer(btnDash, () => STATE.inputs.dash=true, () => {}, () => {});
 bindPointer(btnGather, () => STATE.inputs.gather=true, () => {}, () => STATE.inputs.gather=false);
+// --- CONTROL SCHEMES ---
+// Touch stays mobile-first and untouched. Desktop gets two schemes:
+// Arrows (default on non-touch): arrows move + aim, Space throws,
+// Shift dashes, E special, G pack. WASD keeps the original setup:
+// WASD moves, mouse aims, mouse/F throws, Space dashes, E special, G pack.
+const SCHEME_HINTS = {
+    touch: 'Touch · left thumb moves, drag THROW to aim, release to fire.',
+    arrows: 'Arrows · move + aim with arrow keys, hold Space to throw, Shift dash, E special, G pack.',
+    wasd: 'WASD · move, mouse aims, hold click/F to throw, Space dash, E special, G pack.'
+};
+let controlScheme = 'arrows';
+try {
+    const saved = localStorage.getItem('snowbrawl-controls-v1');
+    if (saved === 'touch' || saved === 'arrows' || saved === 'wasd') controlScheme = saved;
+    else if (window.matchMedia && matchMedia('(pointer: coarse)').matches) controlScheme = 'touch';
+} catch {}
+function setScheme(s) {
+    if (!SCHEME_HINTS[s]) return;
+    controlScheme = s;
+    try { localStorage.setItem('snowbrawl-controls-v1', s); } catch {}
+    document.querySelectorAll('[data-scheme]').forEach(b => {
+        const on = b.dataset.scheme === s;
+        b.classList.toggle('menu-active', on);
+        b.setAttribute('aria-pressed', String(on));
+    });
+    const hint = document.getElementById('scheme-hint');
+    if (hint) hint.textContent = SCHEME_HINTS[s];
+}
+setScheme(controlScheme);
 const keys=new Set();
 function keyboardMovement() {
-    STATE.inputs.moveX=Number(keys.has('d'))-Number(keys.has('a'));
-    STATE.inputs.moveY=Number(keys.has('s'))-Number(keys.has('w'));
+    let mx=0, my=0;
+    if (controlScheme==='arrows') {
+        mx=Number(keys.has('arrowright'))-Number(keys.has('arrowleft'));
+        my=Number(keys.has('arrowdown'))-Number(keys.has('arrowup'));
+    } else if (controlScheme==='wasd') {
+        mx=Number(keys.has('d'))-Number(keys.has('a'));
+        my=Number(keys.has('s'))-Number(keys.has('w'));
+    }
+    STATE.inputs.moveX=mx; STATE.inputs.moveY=my;
+    // Arrow players aim where they move (like the touch joystick does
+    // when no drag-aim is active). Mouse aim stays a WASD-scheme thing.
+    if (controlScheme==='arrows' && (mx!==0 || my!==0) && aimPointer===null)
+        STATE.inputs.angle=Math.atan2(my,mx);
 }
 function resetControls() {
     Object.assign(STATE.inputs, {moveX:0,moveY:0,dash:false,gather:false,throwStart:false,throwRelease:false,ability:false});
@@ -1107,24 +1155,34 @@ document.addEventListener('visibilitychange', () => { if(document.hidden) resetC
 window.addEventListener('keydown', e => {
     if (!STATE.id || STATE.ended || e.target.matches('input,select,button')) return;
     const k=e.key.toLowerCase();
-    if ('wasdfge123v '.includes(k)) e.preventDefault();
+    if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k) || 'wasdfge123v'.includes(k)) e.preventDefault();
     if(e.repeat) return;
     keys.add(k); keyboardMovement();
-    if(k===' ') STATE.inputs.dash=true;
-    if(k==='f') STATE.inputs.throwStart=true;
-    if(k==='g') STATE.inputs.gather=true;
-    if(k==='e') STATE.inputs.ability=true;
+    if (controlScheme==='arrows') {
+        if(k===' ') STATE.inputs.throwStart=true;
+        if(k==='shift') STATE.inputs.dash=true;
+        if(k==='f') STATE.inputs.throwStart=true;
+        if(k==='g') STATE.inputs.gather=true;
+        if(k==='e') STATE.inputs.ability=true;
+    } else if (controlScheme==='wasd') {
+        if(k===' ') STATE.inputs.dash=true;
+        if(k==='f') STATE.inputs.throwStart=true;
+        if(k==='g') STATE.inputs.gather=true;
+        if(k==='e') STATE.inputs.ability=true;
+    }
     if(['1','2','3'].includes(k)) setView(Number(k)-1);
     if(k==='v') setView((STATE.viewIndex+1)%VIEWS.length);
 });
 window.addEventListener('keyup', e => {
     const k=e.key.toLowerCase(); keys.delete(k); keyboardMovement();
-    if(k==='f') STATE.inputs.throwRelease=true;
+    if (controlScheme==='arrows' && (k===' ' || k==='f')) STATE.inputs.throwRelease=true;
+    if (controlScheme==='wasd' && k==='f') STATE.inputs.throwRelease=true;
     if(k==='g') STATE.inputs.gather=false;
 });
 
 // Mouse Aim (zoom-aware: the player renders at the zoomed screen position)
 window.addEventListener('mousemove', (e) => {
+    if (controlScheme!=='wasd') return;
     const p = STATE.players[STATE.id];
     if (!p || aimPointer !== null) return;
     const zoom = VIEWS[STATE.viewIndex].zoom;
@@ -1134,7 +1192,7 @@ window.addEventListener('mousemove', (e) => {
 });
 let mouseAction = null;
 canvas.addEventListener('pointerdown', e => {
-    if(e.pointerType!=='mouse' || !STATE.id || STATE.ended) return;
+    if(e.pointerType!=='mouse' || controlScheme!=='wasd' || !STATE.id || STATE.ended) return;
     canvas.setPointerCapture(e.pointerId); mouseAction=e.button;
     if(e.button===0) STATE.inputs.throwStart=true;
     if(e.button===2) STATE.inputs.gather=true;
