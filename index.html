@@ -525,6 +525,10 @@ class VisualPlayer {
         ctx.scale(gatherScale, gatherScale);
         drawSnowRecruit(ctx, this, performance.now());
         ctx.restore();
+        if(this.captured){
+          ctx.save();ctx.textAlign='center';ctx.font='900 13px system-ui';ctx.fillStyle='#143b58';
+          ctx.fillText('🔒 POW',drawX,drawY-62);ctx.restore();
+        }
         if (this.id === STATE.id) {
             ctx.fillStyle = '#ffcf70';
             ctx.strokeStyle = '#7a5520';
@@ -688,6 +692,19 @@ socket.on('state', (serverData) => {
 
 socket.on('abilityDenied', data => { const el=document.getElementById('ability-clock');el.textContent=data.reason;STATE.abilityNoticeUntil=performance.now()+1500; });
 socket.on('effect', (data) => {
+    if(data.type==='pow_capture'){
+      createParticles(data.x,data.y,'#d8f5ff',27,'player');
+      addPopup(data.x,data.y-45,'SNOWED IN!','#ffd377');
+    }
+    if(data.type==='pow_release'){
+      createParticles(data.x,data.y,'#b8ffcb',34,'release');
+      addPopup(data.x,data.y-48,'JAIL BREAK!','#51bb79');
+      Audio.sfx.collect();
+    }
+    if(data.type==='pow_buff'){
+      createParticles(data.x,data.y,'#ffe38c',24,'flake');
+      addPopup(data.x,data.y-65,'POWER UP!','#efb83b');
+    }
     if(data.type==='parent_react') {STATE.parentReactUntil=performance.now()+1800;createParticles(data.x,data.y,'#fff',12);}
     if (['throw','cannon'].includes(data.type) && STATE.players[data.id]) {
         const player=STATE.players[data.id];
@@ -739,7 +756,7 @@ socket.on('hit', (data) => {
     }
     if (data.id === STATE.id) {
         CONFIG.screenShake = reducedMotion || STATE.lowEffects ? 0 : 6;
-        addPopup(data.x, data.y, "FROZEN!", "#00FFFF");
+        addPopup(data.x, data.y, MENU.gameMode==='pow'?'YOU WERE TAGGED!':'FROZEN!', "#00FFFF");
     }
 });
 
