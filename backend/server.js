@@ -64,10 +64,13 @@ const OVERTIME_CAP_TICKS = Number(process.env.OVERTIME_CAP_TICKS) || 3600;
 // Easy/Hard tune aim noise, charge time, throw range, dash frequency,
 // and top speed. At every difficulty, bots out of throw range steer for
 // the center hill (see computeBotInput) so the hill objective stays
-// live in single-player.
+// live in single-player. Normal is the friendly default (softened Oct 29,
+// 2026, after playtesting found base bots too hard): slower wind-up,
+// looser aim, shorter reach, and slightly slower than a human, so a new
+// player can dodge, outrun, and outplay them. Hard keeps the original edge.
 const DIFFICULTY = {
     easy:   { aimNoise: 0.5,  chargeAt: 40, throwRange: 450, dashProb: 0.002, speedMul: 0.85 },
-    normal: { aimNoise: 0.2,  chargeAt: 25, throwRange: 550, dashProb: 0.005, speedMul: 1 },
+    normal: { aimNoise: 0.35, chargeAt: 35, throwRange: 500, dashProb: 0.003, speedMul: 0.95 },
     hard:   { aimNoise: 0.08, chargeAt: 15, throwRange: 650, dashProb: 0.01,  speedMul: 1.1 }
 };
 // Extra hit radius (px) for a human's throws in single-player: hitting
@@ -389,7 +392,7 @@ function useAbility(p,match) {
 // --- BOT AI ---
 // Runs once per tick per bot, before player updates. Reuses the same physics
 // and charge/release mechanics as human players. Behavior scales with the
-// match's difficulty (normal reproduces the original bot exactly).
+// match's difficulty (see DIFFICULTY; hard is the sharpest).
 function computeBotInput(bot, match) {
     const diff = difficultyOf(match);
     if (bot.isFrozen) {
