@@ -4,6 +4,8 @@ const { sanitizeInput, segmentHit } = require('./gameplay');
 const { CLASSES, classId, shotPattern, canBuild } = require('./classes');
 const {makeNeighborhood,PARENT} = require('./neighborhood');
 const {MISSIONS,AGGRESSION,aggressionId,missionProgress}=require('./missions');
+const {sanitizeAppearance}=require('./cosmetics');
+const {steerBot,hillSlot}=require('./bot-steering');
 const app = express();
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
@@ -199,6 +201,9 @@ class ServerPlayer {
         // Cosmetics (Synced so everyone sees the same)
         this.skinColor = ['#ffdbac', '#f1c27d', '#e0ac69', '#8d5524', '#c68642'][Math.floor(Math.random() * 5)];
         this.hatType = Math.floor(Math.random() * 4);
+        this.jacketColor = team === 'blue' ? '#367FB6' : '#E4545B';
+        this.hatColor = '#313C4F';
+        this.autoReload = false; // Explicit opt-in; legacy clients still pack manually.
 
         // Spawn Logic
         const margin = 200;
@@ -264,10 +269,13 @@ class ServerPlayer {
             // Normal Movement
             // If Gathering, move slower
             let accel = CONFIG.acceleration;
-            if (this.inputs.gather && !this.hasBall) {
-                accel *= 0.5;
-                this.vx *= 0.8;
-                this.vy *= 0.8;
+            if ((this.inputs.gather || this.autoReload) && !this.hasBall) {
+                // The new kid controls auto-pack while moving; legacy PACK still slows movement.
+                if (!this.autoReload) {
+                    accel *= 0.5;
+                    this.vx *= 0.8;
+                    this.vy *= 0.8;
+                }
                 this.gatherProgress++;
                 if (this.gatherProgress >= CLASSES[this.classId].gather) {
                     this.hasBall = true;
@@ -431,15 +439,13 @@ function computeBotInput(bot, match) {
     // between steering in and chasing out. Once the enemy closes in,
     // normal combat behavior below resumes either way.
     if (!match.overtime && best > diff.throwRange && match.hill[bot.team] === 0) {
-        const hx = HILL_CENTER_X - bot.x, hy = HILL_CENTER_Y - bot.y;
-        const hdist = Math.hypot(hx, hy) || 1;
-        if (hdist > HILL_RADIUS) {
-            bot.inputs.moveX = hx / hdist;
-            bot.inputs.moveY = hy / hdist;
-        } else {
-            bot.inputs.moveX = 0;
-            bot.inputs.moveY = 0;
-        }
+        // Each bot occupies a distinct position in the hill instead of the flag center.
+        const goal = hillSlot(bot, HILL_CENTER_X, HILL_CENTER_Y);
+        const hx = goal.x - bot.x, hy = goal.y - bot.y;
+        const hdist = Math.hypot(hx, hy);
+        const movement = steerBot(bot, match, goal.x, goal.y, 1, hdist < 20);
+        bot.inputs.moveX = movement.moveX;
+        bot.inputs.moveY = movement.moveY;
         bot.inputs.gather = !bot.hasBall;
         bot.inputs.angle = Math.atan2(hy, hx);
         bot.inputs.dash = false;
@@ -449,7 +455,8 @@ function computeBotInput(bot, match) {
 
     if (!bot.hasBall) {
         // Gather (drift toward the enemy while gathering).
-        bot.inputs.moveX = nx*temperament.chase; bot.inputs.moveY = ny*temperament.chase;
+        const movement=steerBot(bot,match,target.x,target.y,temperament.chase);
+        bot.inputs.moveX=movement.moveX; bot.inputs.moveY=movement.moveY;
         bot.inputs.gather = true;
         bot.inputs.angle = Math.atan2(ny, nx);
         bot.inputs.dash = false;
@@ -461,12 +468,14 @@ function computeBotInput(bot, match) {
     if (dist <= diff.throwRange * (bot.classId==='frostweaver'?1.25:bot.classId==='glacier'?0.85:1)) {
         // In range: hold still and charge. Release is handled in tickMatch
         // once chargeLevel reaches the difficulty's chargeAt ticks.
-        bot.inputs.moveX = 0; bot.inputs.moveY = 0;
+        const spacing=steerBot(bot,match,bot.x,bot.y,1,true);
+        bot.inputs.moveX = spacing.moveX; bot.inputs.moveY = spacing.moveY;
         if (bot.chargeLevel === 0 && match.tick >= (bot.nextAttackTick||0)) bot.chargeLevel = 1;
         bot.inputs.dash = false;
     } else {
         // Out of range: chase, and cancel any partial charge.
-        bot.inputs.moveX = nx*temperament.chase; bot.inputs.moveY = ny*temperament.chase;
+        const movement=steerBot(bot,match,target.x,target.y,temperament.chase);
+        bot.inputs.moveX=movement.moveX; bot.inputs.moveY=movement.moveY;
         bot.chargeLevel = 0;
         bot.inputs.dash = temperament.chase===1 && Math.random() < diff.dashProb; // occasional dash while moving
     }
@@ -810,6 +819,15 @@ io.on('connection', (socket) => {
             match.players[socket.id] = new ServerPlayer(socket.id, team, false, recruit);
         }
 
+        // New UX requests simplified classic controls; old clients keep manual packing.
+        const human=match.players[socket.id];
+        human.autoReload = human.classId === 'classic' && data && data.streamlined === true;
+        if (data && data.appearance) {
+            const colors=sanitizeAppearance(data.appearance);
+            human.skinColor=colors.skin;
+            human.jacketColor=colors.jacket;
+            human.hatColor=colors.hat;
+        }
         socket.join(match.id);
         socket.data.matchId = match.id;
         console.log(`Player ${socket.id} joined ${match.id} (${mode} ${blue}v${red} ${match.difficulty})`);
