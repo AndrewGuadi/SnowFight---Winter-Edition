@@ -280,7 +280,8 @@ class ServerPlayer {
                     this.vx *= 0.8;
                     this.vy *= 0.8;
                 }
-                this.gatherProgress++;
+                const frenzy=match.gameMode==='pow' && match.pow?.buffs?.[this.team]?.kind==='snowballFrenzy';
+                this.gatherProgress+=frenzy?4/3:1;
                 if (this.gatherProgress >= CLASSES[this.classId].gather) {
                     this.hasBall = true;
                     this.gatherProgress = 0;
@@ -297,7 +298,8 @@ class ServerPlayer {
 
             // Cap Speed (bots scale by difficulty; humans use CONFIG.maxSpeed).
             const speed = Math.hypot(this.vx, this.vy);
-            const cap = CONFIG.maxSpeed * CLASSES[this.classId].speed * (this.isBot ? difficultyOf(match).speedMul : 1);
+            const boots=match.gameMode==='pow' && match.pow?.buffs?.[this.team]?.kind==='snowBoots';
+            const cap = CONFIG.maxSpeed * CLASSES[this.classId].speed * (this.isBot ? difficultyOf(match).speedMul : 1) * (boots?1.12:1);
             if (speed > cap) {
                 this.vx = (this.vx / speed) * cap;
                 this.vy = (this.vy / speed) * cap;
@@ -686,6 +688,8 @@ function tickMatch(match) {
             ball.active = false;
             if (impact.player) {
                 const p = impact.player;
+                const shield=match.gameMode==='pow' && match.pow?.buffs?.[p.team]?.kind==='fortShield';
+                if(shield){match.pow.buffs[p.team]=null;match.emit('effect',{type:'guard_hit',x:p.x,y:p.y,id:p.id});return;}
                 if (p.guardTicks>0) {
                     p.guardTicks=0;
                     match.emit('effect',{type:'guard_hit',x:p.x,y:p.y,id:p.id});
@@ -889,7 +893,8 @@ io.on('connection', (socket) => {
         }
 
         // Release Throw
-        if (data.throwRelease && p.hasBall && !p.isFrozen && !(p.invulnerableUntil>match.tick)){
+        if (data.throwRelease && p.hasBall && !p.isFrozen) {
+            if(match.gameMode==='pow')p.invulnerableUntil=0; // offense ends rescue protection
             fireSnowball(p,match);
         }
     });
