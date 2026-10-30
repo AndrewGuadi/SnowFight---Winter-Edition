@@ -1,11 +1,13 @@
-# SnowFight — Rebuild Program (planning branch)
+# SnowFight — Rebuild Program and Next Playable Foundation
 
-**Status:** PROPOSED / NOT IMPLEMENTED  
+**Status:** PRODUCT CHARTER + INITIAL CODE IMPLEMENTATION; DRAFT / NOT RELEASED  
 **Plan version:** 1.0, October 30, 2026  
 **Source baseline:** main at be4797ab0bee88c139de3867379fc362bcff8853 when this documentation branch was created  
 **Branch:** docs/rebuild-reuse-first-2026-10-30  
 **Decision authority:** Andrew (product owner)  
-**Release status:** No code migration, merge, production deployment or contest submission authorized by these documents.
+**Release status:** Foundation code and regression tests now exist on this isolated branch. No merge, production deployment or contest submission. Full Node/Playwright and real-device verification remain required.
+
+**Next update:** [11_NEXT_FOUNDATION_BASE.md](11_NEXT_FOUNDATION_BASE.md) describes the implemented guest-first UI, validated kid cosmetics, opt-in auto reload, bot separation, tests, known limitations and exact readiness gates. Earlier planning-only statements are historical context, not the current branch's implementation status.
 
 ## Executive decision
 
@@ -37,6 +39,7 @@ The mission today is a competitive and reliable game, not a new engine for its o
 | [08_RELEASE_AND_CONTEST_CHECKLIST.md](08_RELEASE_AND_CONTEST_CHECKLIST.md) | Safety, contest rules, owner approval, production verification | When may we ship? |
 | [09_PRIORITIZED_BACKLOG.md](09_PRIORITIZED_BACKLOG.md) | Dependency-ordered implementation tickets, owners, definition of done | What is the next executable task? |
 | [10_DECISION_LOG_AND_RISKS.md](10_DECISION_LOG_AND_RISKS.md) | Architecture decision records, unresolved questions, risk register | What must be decided explicitly? |
+| [11_NEXT_FOUNDATION_BASE.md](11_NEXT_FOUNDATION_BASE.md) | Actual implementation report, code paths, checks and blockers | What is ready for testing now? |
 
 ## Existing repository truths
 
@@ -45,7 +48,7 @@ The mission today is a competitive and reliable game, not a new engine for its o
 - Server: backend/server.js (Node, Express, Socket.IO), backend/gameplay.js, backend/classes.js, backend/missions.js.
 - The current authoritative server simulates at 60 Hz and publishes room state at approximately 30 Hz during active play.
 - Existing game modes include solo bots and human multiplayer; **30v30 is documented as single-player bot mode, not proven 30v30 online humans**.
-- Current bot AI targets the nearest unfrozen enemy, and when it needs the hill it steers toward the same center coordinates, explaining the observed clustering.
+- On baseline main, bots target the nearest enemy or steer to one exact hill center. This rebuild branch introduces distinct hill slots, separation and obstacle pressure; complete behavior and performance still require proper runtime testing.
 - Open PR #17, **Improve multiplayer responsiveness with client prediction**, already proposes sequence-acknowledged input, local prediction/reconciliation and reduced DTO snapshots. Inspect and reconcile its actual current status before assigning duplicate work.
 - Existing governance in collaborators/README.md forbids using the parked full-stack rewrite (PR #2 / feature/fullstack-rewrite), requires branches and PRs and reserves merges/deployments for owner authorization. This plan does not supersede those guardrails.
 - Existing production client and backend are described in collaborators/README.md. **Do not test load against production or touch hosting/secrets.**
