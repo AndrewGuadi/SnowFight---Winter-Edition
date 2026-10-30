@@ -1,0 +1,6 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const POW=require('../pow');const {createMatch,ServerPlayer,tickMatch}=require('../server');
+function setup(){let m=createMatch('multi',5,5,undefined,'TEST','pow');m.emit=()=>{};m.emitVolatile=()=>{};const a=new ServerPlayer('a','blue',false),b=new ServerPlayer('b','red',false),c=new ServerPlayer('c','blue',false);m.players={a,b,c};for(const p of Object.values(m.players))POW.onJoin(m,p);m.timerStarted=true;return m}
+test('capture and rescue require 120 uninterrupted ticks',()=>{const m=setup();POW.onHit(m,m.players.a,{team:'red',ownerId:'b'});assert.equal(m.players.a.captured,true);const c=m.players.c;c.x=380;c.y=280;c.interact=true;for(let i=0;i<119;i++)POW.tick({...m,tick:++m.tick});assert.equal(m.players.a.captured,true);POW.tick({...m,tick:++m.tick});assert.equal(m.players.a.captured,false);assert.equal(m.pow.rescues.blue,1)});
+test('capture all players yields single authoritative win',()=>{const m=setup();POW.onHit(m,m.players.a,{team:'red',ownerId:'b'});POW.onHit(m,m.players.c,{team:'red',ownerId:'b'});assert.equal(m.winner,'red');assert.equal(m.ended,true)});
+test('legacy brawl rules are default',()=>{const m=createMatch('multi',1,1);assert.equal(m.gameMode,'brawl');assert.equal(m.pow,undefined)});
