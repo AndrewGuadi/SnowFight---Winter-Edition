@@ -1,0 +1,11 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {createMatch,tickMatch,ServerPlayer,fireSnowball,useAbility}=require('../server');
+const {MISSIONS}=require('../missions');
+function mission(id){const spec=MISSIONS[id],m=createMatch('single',spec.blue,spec.red,spec.difficulty);m.mission=id;m.aggression=spec.aggression;m.timerStarted=true;return m;}
+test('beacon succeeds at five hill points',()=>{const m=mission('beacon');m.hill.blue=4;m.hillHolder='blue';m.hillSecondTicks=59;const p=new ServerPlayer('human','blue',false);p.x=1500;p.y=1000;m.players.human=p;tickMatch(m);assert.equal(m.ended,true);assert.equal(m.winner,'blue');});
+test('snowfight requires freezes rather than an unrelated hill lead',()=>{const m=mission('snowfight');m.hill.blue=20;m.score.blue=2;tickMatch(m);assert.equal(m.ended,false);m.score.blue=3;tickMatch(m);assert.equal(m.ended,true);assert.equal(m.winner,'blue');});
+test('mission fails at the buzzer without ordinary overtime',()=>{const m=mission('beacon');m.timerTicks=5399;tickMatch(m);assert.equal(m.ended,true);assert.equal(m.overtime,false);assert.equal(m.winner,'red');});
+test('squad draw means retry and a squad win completes',()=>{const draw=mission('squad');draw.timerTicks=5399;tickMatch(draw);assert.equal(draw.winner,'red');const win=mission('squad');win.hill.blue=1;win.timerTicks=5399;tickMatch(win);assert.equal(win.winner,'blue');});
+test('aggression controls firing recovery and chill abilities',()=>{const m=mission('beacon');const b=new ServerPlayer('bot','red',true,'glacier');b.hasBall=true;b.chargeLevel=10;m.players.bot=b;fireSnowball(b,m);assert.ok(b.nextAttackTick>=m.tick+90);b.abilityCooldown=0;assert.equal(m.aggression,'chill');});
+test('chill balanced and relentless have distinct sustained firing rates',()=>{const rates={};for(const aggression of ['chill','balanced','relentless']){const m=createMatch('single',1,1,'easy');m.aggression=aggression;const b=new ServerPlayer('bot','red',true,'classic');m.players.bot=b;b.inputs.angle=0;for(let i=0;i<4;i++){b.hasBall=true;b.chargeLevel=10;fireSnowball(b,m);b.nextAttackTick=m.tick+({chill:90,balanced:30,relentless:0}[aggression]);}rates[aggression]=b.stats.throws;}assert.deepEqual(rates,{chill:4,balanced:4,relentless:4});});
