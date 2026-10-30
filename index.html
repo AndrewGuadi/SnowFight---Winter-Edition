@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Snowbrawl: World War (Online)</title>
     <link rel="stylesheet" href="assets/ui.css">
+    <link rel="stylesheet" href="assets/foundation.css">
     <script src="assets/socket.io.min.js"></script>
     <script src="assets/recruits.js"></script>
     <script src="assets/neighborhood.js"></script>
@@ -117,8 +118,8 @@
     <!-- Start Screen -->
     <div id="start-screen" class="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
         <div class="bg-white/95 p-8 rounded-3xl shadow-2xl text-center max-w-lg w-full mx-4 border border-white/50 animate-pop">
-            <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-400 mb-2">SNOWBRAWL</h1>
-            <p class="text-slate-500 font-bold mb-6 tracking-widest text-xs uppercase">WINTER FIELD CLUB · THE SNOWGUARD</p>
+            <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-400 mb-2">SNOWFIGHT</h1>
+            <p class="text-slate-500 font-bold mb-6 tracking-widest text-xs uppercase">A SNOW DAY WITH THE WHOLE NEIGHBORHOOD</p>
             
             <div id="connection-status" class="mb-6 flex flex-col items-center">
                 <div class="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-2"></div>
@@ -412,6 +413,9 @@ class VisualPlayer {
         
         this.skinColor = data.skinColor || '#ffdbac';
         this.hatType = data.hatType || 0;
+        this.jacketColor = data.jacketColor || (this.team==='blue'?'#367FB6':'#E4545B');
+        this.hatColor = data.hatColor || '#313C4F';
+        this.autoReload = data.autoReload === true;
         this.teamColor = this.team === 'blue' ? '#2196F3' : '#F44336';
         this.teamColorDark = this.team === 'blue' ? '#1976D2' : '#D32F2F';
 
@@ -422,6 +426,10 @@ class VisualPlayer {
 
     update(serverData) {
         this.abilityCooldown = serverData.abilityCooldown || 0;
+        this.skinColor = serverData.skinColor || this.skinColor;
+        this.jacketColor = serverData.jacketColor || this.jacketColor;
+        this.hatColor = serverData.hatColor || this.hatColor;
+        this.autoReload = serverData.autoReload === true;
         this.guardTicks = serverData.guardTicks || 0;
         this.targetX = serverData.x;
         this.targetY = serverData.y;
@@ -466,7 +474,7 @@ class VisualPlayer {
         ctx.translate(drawX, drawY + bob);
         ctx.scale(scale, scale);
 
-        if (this.classId !== 'classic') {
+        if (this.classId !== 'classic' || this.autoReload) {
             drawSnowRecruit(ctx,this);
             ctx.restore();
             if (this.id === STATE.id) {
@@ -607,6 +615,7 @@ socket.on('init', (data) => {
     document.getElementById('field-hud').classList.remove('hidden');
     STATE.classConfig = data.classes || {};
     STATE.classId = data.classId || 'classic';
+    document.body.classList.toggle('streamlined',STATE.classId==='classic');
     STATE.structures = [];
     document.getElementById('btn-ability').hidden = STATE.classId === 'classic';
     STATE.activeMission=data.match?.mission || null;
@@ -798,7 +807,7 @@ socket.on('matchEnd', () => { resetControls(); });
  * Preselect Single Player + 1v1 so Play works immediately.
  * 30v30 is single-player only: hidden from multiplayer selection.
  */
-const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'glacier', room: '', mission: 'beacon', aggression:'balanced' };
+const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'classic', room: '', mission: 'beacon', aggression:'balanced' };
 
 // Shareable room link: ?room=CODE. Same normalization as the server.
 const URL_ROOM = (() => {
@@ -929,7 +938,7 @@ function joinGame() {
     btn.disabled = true;
     btn.innerText = 'JOINING...';
     document.getElementById('menu-error').classList.add('hidden');
-    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, mission: MENU.mode==='single'?MENU.mission:null, aggression:MENU.aggression, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '' });
+    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, mission: MENU.mode==='single'?MENU.mission:null, aggression:MENU.aggression, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '', streamlined: MENU.classId==='classic', appearance: window.SNOW_GUEST ? SNOW_GUEST.get() : null });
 }
 
 let previousFrame = performance.now(), lastInputSent = 0;
@@ -1182,7 +1191,7 @@ const SCHEME_HINTS = {
     arrows: 'Arrows · move + aim with arrow keys, hold Space to throw, Shift dash, E special, G pack.',
     wasd: 'WASD · move, mouse aims, hold click/F to throw, Space dash, E special, G pack.'
 };
-let controlScheme = 'arrows';
+let controlScheme = 'wasd';
 try {
     const saved = localStorage.getItem('snowbrawl-controls-v1');
     if (saved === 'touch' || saved === 'arrows' || saved === 'wasd') controlScheme = saved;
@@ -1317,7 +1326,7 @@ function updateFieldHud() {
     const m=MISSIONS[mission], hits=p.stats?.freezes || 0;
     document.getElementById('assignment').textContent=`${m.label} / ${Math.min(hits,m.target)} OF ${m.target}${hits>=m.target?' · COMPLETE':''}`;
     if(STATE.activeMission){const m=STATE.activeMission;document.getElementById('assignment').textContent=m.metric==='win'?`${m.name.toUpperCase()} · WIN THIS ROUND`:`${m.name.toUpperCase()} · ${Math.min(m.progress,m.target)}/${m.target} ${m.metric.toUpperCase()}`;}
-    document.getElementById('combat-status').textContent=p.isFrozen ? `FROZEN · thaw in ${Math.ceil(p.freezeTicks/60)}s` : !p.hasBall ? (p.gatherProgress ? `PACKING ${Math.round(p.gatherProgress/(STATE.classConfig[p.classId]?.gather || 45)*100)}%` : 'NO SNOWBALL · HOLD PACK') : p.chargeLevel>0 ? `POWER ${Math.round(p.chargeLevel/60*100)}% · RELEASE TO THROW` : 'SNOWBALL READY';
+    document.getElementById('combat-status').textContent=p.isFrozen ? `SNOWED IN · back in ${Math.ceil(p.freezeTicks/60)}s` : !p.hasBall ? (p.autoReload ? `ROLLING A SNOWBALL ${Math.round(p.gatherProgress/(STATE.classConfig[p.classId]?.gather || 45)*100)}%` : (p.gatherProgress ? `PACKING ${Math.round(p.gatherProgress/(STATE.classConfig[p.classId]?.gather || 45)*100)}%` : 'NO SNOWBALL · HOLD PACK')) : p.chargeLevel>0 ? 'AIMING · RELEASE TO THROW' : 'READY TO THROW';
     document.getElementById('charge-indicator').style.strokeDashoffset=289*(1-p.chargeLevel/60);
     btnDash.style.opacity=p.dashCooldownTimer>0?'0.45':'1';
     btnThrow.style.opacity=p.hasBall?'1':'0.45';
@@ -1334,6 +1343,7 @@ socket.on('disconnect', () => {
     document.getElementById('results-overlay').classList.add('hidden');
     document.getElementById('btn-play').disabled=true;
     document.getElementById('btn-play').textContent='RECONNECTING…';
+    document.body.classList.remove('streamlined');
 });
 socket.on('connect_error', () => {
     document.getElementById('connection-status').textContent='Server unavailable or waking up. Retrying…';
@@ -1368,6 +1378,7 @@ document.querySelectorAll('.recruit-roster button').forEach(b=>{const c=b.queryS
 selectRecruit(MENU.classId);
 gameLoop();
 </script>
+<script src="assets/foundation-ui.js"></script>
 </body>
 </html>
 
