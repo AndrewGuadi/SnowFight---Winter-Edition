@@ -129,6 +129,8 @@
                  Class, mode, size and difficulty live behind Custom. -->
             <div id="front-door" class="mb-4">
                 <p class="text-slate-500 font-bold tracking-widest text-xs uppercase mb-1">90-SECOND BRAWL · HOLD THE CENTER HILL</p>
+                <p class="field-hint">Hold the hill — keep the Snowguard's signal beacon lit.</p>
+                <p id="campaign-panel" class="field-hint"></p>
                 <p class="field-hint" style="margin:0 0 10px">Most hill points at the buzzer wins. No setup — just play.</p>
                 <button id="btn-play-quick" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-2xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
                     ▶ PLAY
@@ -200,7 +202,7 @@
                 <option value="ace">Snow ace · land 10 freezes</option>
             </select>
             <p id="career-line" class="field-hint"></p>
-            <details class="controls-help"><summary>How to play · touch & keyboard</summary><p class="field-hint">Touch: left thumb moves, drag THROW to aim, release to fire.<br>Arrows: arrow keys move + aim, hold Space to throw, Shift dash, E special, G pack.<br>WASD + mouse: WASD moves, mouse aims, hold click/F to throw, Space dash, E special, G pack.<br>Pick your scheme above — it saves on this device. Mobile stays touch-first.</p></details>
+            <details class="controls-help"><summary>How to play · touch & keyboard</summary><p class="field-hint">Touch: left thumb moves, drag THROW to aim, release to fire.<br>Arrows: arrow keys move + aim, hold Space to throw, Shift dash, E special, G pack.<br>WASD + mouse: WASD moves, mouse aims, hold click/F to throw, Space dash, E special, G pack.<br>Pick your scheme above — it saves on this device. Mobile stays touch-first.<br>Goal: hold the center hill to keep the Snowguard's signal beacon lit — most hill points at the buzzer wins.</p></details>
             <p id="menu-error" class="hidden text-red-500 font-bold text-sm mb-3"></p>
 
             <button id="btn-play" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
@@ -744,6 +746,18 @@ function showResults(data) {
     career.rounds++; career.best = Math.max(career.best, stats.freezes);
     if (completed) career.medals++;
     try { localStorage.setItem('snowbrawl-career-v1', JSON.stringify(career)); } catch {}
+    // Campaign-lite progress from this match's results (client data only).
+    try {
+      const pc=Object.keys(STATE.players||{}).length;
+      const myHill=(data.hill&&data.hill[STATE.team])||0;
+      campaign.hill=(campaign.hill||0)+myHill;
+      if(data.winner===STATE.team&&pc===2) campaign.win1v1=true;
+      if((stats.rescues||0)>=1) campaign.rescue=true;
+      if(data.winner===STATE.team&&pc===10) campaign.win5v5=true;
+      if(data.winner===STATE.team&&STATE.classId&&!campaign.classes.includes(STATE.classId)) campaign.classes.push(STATE.classId);
+      localStorage.setItem('snowbrawl-campaign-v1', JSON.stringify(campaign));
+      renderCampaign();
+    } catch {}
     document.getElementById('results-overlay').classList.remove('hidden');
 }
 // Use the following final snapshot for exact personal stats, not the earlier event.
@@ -1237,6 +1251,25 @@ const MISSIONS = { scout:{label:'SCOUT',target:3}, striker:{label:'STRIKER',targ
 let mission='scout', career={rounds:0,medals:0,best:0};
 try { const saved=JSON.parse(localStorage.getItem('snowbrawl-career-v1')); if(saved) for(const key of Object.keys(career)) if(Number.isFinite(saved[key]) && saved[key]>=0) career[key]=saved[key]; } catch {}
 document.getElementById('career-line').textContent=`${career.rounds} rounds · ${career.medals} assignments completed · Best ${career.best} freezes (this device)`;
+// Campaign-lite: a 5-mission ladder on this device (localStorage, no server
+// change, no currency). Progress is derived from stored state each render.
+let campaign={hill:0,win1v1:false,rescue:false,win5v5:false,classes:[]};
+try { const sc=JSON.parse(localStorage.getItem('snowbrawl-campaign-v1')); if(sc) { if(Number.isFinite(sc.hill)&&sc.hill>=0) campaign.hill=sc.hill; if(sc.win1v1) campaign.win1v1=true; if(sc.rescue) campaign.rescue=true; if(sc.win5v5) campaign.win5v5=true; if(Array.isArray(sc.classes)) campaign.classes=sc.classes.filter(c=>typeof c==='string'); } } catch {}
+function campaignMissions() {
+  return [
+    {label:'Win a 1v1 match', done:!!campaign.win1v1, progress:campaign.win1v1?'1/1':'0/1'},
+    {label:'Bank 10 hill points', done:campaign.hill>=10, progress:Math.min(campaign.hill,10)+'/10'},
+    {label:'Rescue a frozen teammate', done:!!campaign.rescue, progress:campaign.rescue?'1/1':'0/1'},
+    {label:'Win a 5v5 match', done:!!campaign.win5v5, progress:campaign.win5v5?'1/1':'0/1'},
+    {label:'Win a match with every class', done:campaign.classes.length>=4, progress:Math.min(campaign.classes.length,4)+'/4'},
+  ];
+}
+function renderCampaign() {
+  const el=document.getElementById('campaign-panel'); if(!el) return;
+  const ms=campaignMissions(); const cur=ms.find(m=>!m.done);
+  el.textContent = cur ? `CAMPAIGN · Mission ${ms.indexOf(cur)+1}/5: ${cur.label} — ${cur.progress}` : 'CAMPAIGN COMPLETE — all 5 missions done on this device.';
+}
+renderCampaign();
 function selectMission(value) { if(MISSIONS[value]) mission=value; }
 function toggleSound() { Audio.muted=!Audio.muted; const b=document.getElementById('sound-toggle'); b.textContent=Audio.muted?'SOUND OFF':'SOUND ON'; b.setAttribute('aria-pressed',String(Audio.muted)); }
 function updateFieldHud() {
