@@ -36,3 +36,4 @@ jobs:
       - run: node backend/tests/browser-smoke.cjs
       - run: node backend/tests/mission-browser.cjs
       - run: node backend/tests/recruits-browser.cjs
+      - run: node backend/tests/modes-browser.cjs
