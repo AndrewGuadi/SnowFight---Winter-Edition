@@ -460,6 +460,7 @@ class VisualPlayer {
         this.jacketColor = serverData.jacketColor || this.jacketColor;
         this.hatColor = serverData.hatColor || this.hatColor;
         this.autoReload = serverData.autoReload === true;
+        this.captured = serverData.captured===true;
         this.guardTicks = serverData.guardTicks || 0;
         this.targetX = serverData.x;
         this.targetY = serverData.y;
@@ -801,7 +802,7 @@ socket.on('matchEnd', () => { resetControls(); });
  * Preselect Single Player + 1v1 so Play works immediately.
  * 30v30 is single-player only: hidden from multiplayer selection.
  */
-const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'classic', room: '', mission: 'beacon', aggression:'balanced' };
+const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'classic', room: '', mission: 'beacon', aggression:'balanced', gameMode:(new URLSearchParams(location.search).get('gameMode')==='pow'?'pow':'brawl') };
 
 // Shareable room link: ?room=CODE. Same normalization as the server.
 const URL_ROOM = (() => {
