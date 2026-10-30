@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "status": "planned",
+  "tasks": [
+    {
+      "id": "SF-VIS-001",
+      "title": "Animated winter kid first full motion pass",
+      "owner": "kimi",
+      "reviewer": "muse",
+      "dependencies": [],
+      "branch": "feature/kimi-winter-kid-animations",
+      "write": [
+        "assets/recruits.js",
+        "assets/animation/**",
+        "docs/animation/**"
+      ],
+      "acceptance": [
+        "Idle walk aim quick-throw hit recover animations",
+        "Every skin jacket hat option remains readable",
+        "Team affiliation clear independently of colors",
+        "No changed authoritative collisions or network protocol",
+        "Before/after video and frame-time evidence",
+        "Existing tests pass"
+      ]
+    },
+    {
+      "id": "SF-UX-002",
+      "title": "Fullscreen/PWA and responsive gameboard",
+      "owner": "muse",
+      "reviewer": "gpt6",
+      "dependencies": [],
+      "branch": "feature/muse-fullscreen-gameboard",
+      "write": [
+        "assets/foundation-ui.js",
+        "assets/foundation.css",
+        "docs/ux/**"
+      ],
+      "acceptance": [
+        "User-gesture fullscreen with visible exit",
+        "Graceful iOS fallback",
+        "Landscape safe-area and orientation tests",
+        "No broken aiming after resize/fullscreen",
+        "Test screenshots and browser compatibility report"
+      ]
+    },
+    {
+      "id": "SF-AI-003",
+      "title": "Bot avoidance deterministic regression and PR17 integration assessment",
+      "owner": "sol",
+      "reviewer": "gpt6",
+      "dependencies": [],
+      "branch": "feature/sol-ai-steering-review",
+      "write": [
+        "backend/bot-steering.js",
+        "backend/tests/ai-*.test.cjs",
+        "docs/network/**"
+      ],
+      "acceptance": [
+        "Seeded crowd simulation with overlap metrics",
+        "Document pathing failures and CPU timing",
+        "No scoring regression",
+        "Compare open PR17 to current networking before duplicate implementation"
+      ]
+    },
+    {
+      "id": "SF-INT-004",
+      "title": "Integrate independently reviewed team changes",
+      "owner": "gpt6",
+      "reviewer": "andrew",
+      "dependencies": [
+        "SF-VIS-001",
+        "SF-UX-002",
+        "SF-AI-003"
+      ],
+      "branch": "integration/snowfight-next-polish",
+      "write": [
+        "docs/rebuild/**"
+      ],
+      "acceptance": [
+        "Separate PRs reviewed",
+        "No conflicting changes silently overwritten",
+        "62 baseline Node tests and all four browser suites rerun",
+        "Real-device limitations disclosed",
+        "Owner approves merge and deploy separately"
+      ]
+    }
+  ]
+}
