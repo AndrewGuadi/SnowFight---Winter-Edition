@@ -1013,7 +1013,8 @@ function gameLoop(now = performance.now()) {
     // Center hill: the one objective, drawn on the field so the goal is
     // visible in play — dashed circle (radius 260, matching the server),
     // tinted by the holding team, labeled above the circle.
-    {
+    if(MENU.gameMode==='pow' && window.drawSnowFortWorld) window.drawSnowFortWorld(ctx,cx,cy,now);
+    else     {
         const hx = STATE.worldWidth / 2 - cx, hy = STATE.worldHeight / 2 - cy;
         const holder = STATE.hillHolder || null;
         ctx.save();
