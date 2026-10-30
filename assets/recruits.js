@@ -13,9 +13,18 @@ window.drawSnowRecruit = function(c,p,time=0) {
  c.save();
  ellipse(0,12,id==='glacier'?26:21,7,'#14384e25');
  if(id==='classic') {
-   ellipse(-7,10+move*3,5,5,dark);ellipse(7,10-move*3,5,5,dark);ellipse(0,-5,14,17,team);ellipse(0,-26,11,11,'#f1c7a7');
-   ellipse(0,-34,12,6,dark);ellipse(0,-41,4,4,'#fff');ellipse(-4,-26,1.5,2,dark);ellipse(4,-26,1.5,2,dark);
-   if(p.hasBall)ellipse(17,-5,6,6,'#fff');
+   // Original childhood winter kid, from above and slightly behind.
+   // The outlined team ring is independent of cosmetic jacket/hat colors.
+   const skin=p.skinColor||'#DEAC82', jacket=p.jacketColor||team, hat=p.hatColor||'#DB4E51';
+   ellipse(-8,10+move*3,6,7,'#34475A');ellipse(8,10-move*3,6,7,'#34475A');
+   ellipse(-16,-7+move,7,13,jacket);ellipse(16,-7-move,7,13,jacket);
+   ellipse(-18,0+move,5,6,'#F5E7D6');ellipse(18,0-move,5,6,'#F5E7D6');
+   ellipse(0,-6,16,21,jacket);
+   c.strokeStyle=team;c.lineWidth=3;c.beginPath();c.ellipse(0,-7,24,27,0,0,Math.PI*2);c.stroke();
+   ellipse(0,-25,11,12,skin);
+   ellipse(0,-34,13,10,hat);ellipse(0,-40,10,6,hat);ellipse(0,-46,5,5,'#F7F2F0');
+   c.fillStyle='#F5E4D4';c.fillRect(-11,-32,22,3);
+   if(p.hasBall)ellipse(19+Math.cos(aim)*4,-5+Math.sin(aim)*4,6+(p.chargeLevel||0)/40,6+(p.chargeLevel||0)/40,'#fff');
  } else if(id==='glacier') {
    ellipse(-12,10+move*3,9,6,dark);ellipse(12,10-move*3,9,6,dark);
    ellipse(-24,-9+move*2,10,15,'#a5d3e4');ellipse(24,-9-move*2,10,15,'#d6f5fb');
