@@ -17,7 +17,7 @@ function init(match){
   captures:{blue:0,red:0},rescues:{blue:0,red:0},control:{blue:0,red:0},
   prisoners:{blue:[],red:[]},rescue:{blue:0,red:0},rescuer:{blue:null,red:null},
   gate:{blue:0,red:0},meter:{blue:0,red:0},holder:null,rotation:{blue:0,red:0},
-  buffs:{blue:null,red:null},phase:'waiting'
+  buffs:{blue:null,red:null},holdStreak:{blue:0,red:0},phase:'waiting'
  };
  for(const p of Object.values(match.players))onJoin(match,p);
 }
@@ -33,11 +33,12 @@ function captured(match,p){
  return true;
 }
 function onHit(match,p,ball){
+ const x=p.x,y=p.y;
  if(!captured(match,p))return false;
  match.pow.captures[ball.team]++;match.score[ball.team]++;
  const owner=match.players[ball.ownerId];if(owner)owner.stats.freezes++;
- match.emit('effect',{type:'pow_capture',id:p.id,x:p.x,y:p.y,team:p.team});
- match.emit('hit',{id:p.id,ownerId:ball.ownerId,x:p.x,y:p.y});
+ match.emit('effect',{type:'pow_capture',id:p.id,x,y,team:p.team});
+ match.emit('hit',{id:p.id,ownerId:ball.ownerId,x,y});
  checkWin(match);return true;
 }
 function checkWin(match){
@@ -82,8 +83,9 @@ function tick(match){
   if(p.team==='blue')blue++;else red++;
  }
  const holder=blue>red?'blue':red>blue?'red':null;data.holder=holder;
+ for(const team of ['blue','red'])if(team!==holder)data.holdStreak[team]=0;
  if(holder){
-  if(match.tick%60===0){data.control[holder]++;match.score[holder]++}
+  if(++data.holdStreak[holder]>=60){data.holdStreak[holder]=0;data.control[holder]++;match.score[holder]++}
   if(++data.meter[holder]>=FLAG_CHARGE){
    data.meter[holder]=0;const kind=POWER[data.rotation[holder]++%POWER.length];
    data.buffs[holder]={kind,until:match.tick+480};
