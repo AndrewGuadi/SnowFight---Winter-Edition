@@ -379,6 +379,7 @@ const Audio = {
         osc.type = type; osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
         if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, this.ctx.currentTime + duration);
         gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
         osc.connect(gain); gain.connect(this.ctx.destination);
         osc.start(); osc.stop(this.ctx.currentTime + duration);
     },
@@ -1116,7 +1117,7 @@ function gameLoop(now = performance.now()) {
             ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(dx, dy-22, 2, 0, Math.PI*2); ctx.fill();
         } else if (obs.type === 'snowbank') {
             ctx.fillStyle='#a9cfdc';ctx.beginPath();ctx.ellipse(dx,dy+4,obs.radius,obs.radius*.60,0,0,Math.PI*2);ctx.fill();
-            ctx.fillStyle='#f5fdff';ctx.beginPath();ctx.ellipse(dx-3,dy-5,obs.radius,obs.radius*.84,obs.radius*.54,-.08,0,Math.PI*2);ctx.fill();
+            ctx.fillStyle='#f5fdff';ctx.beginPath();ctx.ellipse(dx-3,dy-5,obs.radius*.84,obs.radius*.54,-.08,0,Math.PI*2);ctx.fill();
         } else {
              ctx.fillStyle = '#78909c'; ctx.beginPath(); ctx.arc(dx, dy, 20, 0, Math.PI*2); ctx.fill();
         }
