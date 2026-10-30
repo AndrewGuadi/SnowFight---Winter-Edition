@@ -551,7 +551,7 @@ function tickMatch(match) {
     }
 
     // Match clock: starts once at least 2 players are present.
-    if (!match.timerStarted && Object.values(match.players).some(p=>p.team==='blue') && Object.values(match.players).some(p=>p.team==='red') && Object.keys(match.players).length >= 2) {
+    if (!match.timerStarted && Object.keys(match.players).length >= 2 && (match.gameMode!=='pow' || (Object.values(match.players).some(p=>p.team==='blue') && Object.values(match.players).some(p=>p.team==='red')))) {
         match.timerStarted = true;
     }
     if (match.timerStarted) {
