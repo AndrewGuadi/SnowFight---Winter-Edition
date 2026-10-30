@@ -1,0 +1,27 @@
+/* SnowFight next foundation — overlay on top of legacy styles. */
+#front-door{max-width:480px;width:100%;margin-left:auto;margin-right:auto;}
+.foundation-eyebrow{font-size:11px;font-weight:900;color:#216d8f;letter-spacing:1.5px;margin:10px 0;}
+.foundation-description{font-size:14px;line-height:1.5;color:#34586d;font-weight:650;margin:10px 0 18px;}
+.foundation-primary,.foundation-secondary{display:block;width:100%;border-radius:15px;padding:14px 12px;margin:10px 0;font-size:clamp(16px,4vw,21px);font-weight:900;touch-action:manipulation;cursor:pointer;}
+.foundation-primary{background:#177eac;color:white;box-shadow:0 5px 0 #075675;}
+.foundation-secondary{background:#e2eff5;color:#224c60;border:1px solid #a9d1e0;}
+.foundation-primary:disabled,.foundation-secondary:disabled{opacity:.5;cursor:wait;}
+.foundation-row{display:flex;gap:10px;align-items:stretch;margin:12px 0;}
+.foundation-option{flex:1;border:1px solid #a6cbd9;background:#f6fcfd;color:#23536c;border-radius:12px;padding:11px 6px;font-size:12px;font-weight:800;}
+.foundation-text{display:block;background:transparent;border:0;text-decoration:underline;color:#52748a;font-size:12px;padding:9px;margin:12px auto;}
+.foundation-detail{text-align:left;padding:16px;border-radius:16px;background:#e8f4f9;border:1px solid #aed1e1;margin:14px 0;}
+.foundation-detail[hidden]{display:none!important;}
+.foundation-detail h2{font-size:19px;font-weight:900;margin:0 0 6px;color:#1a4b62;}
+.foundation-detail p{font-size:12px;line-height:1.45;color:#41647a;margin:0 0 8px;}
+.foundation-detail label{display:block;font-size:12px;font-weight:850;margin:10px 0 5px;}
+#foundation-room{flex:1;min-width:0;padding:12px 10px;border:1px solid #99bfce;background:white;border-radius:12px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:#22475c;}
+#foundation-preview{display:block;width:100%;max-width:260px;margin:0 auto;background:#d3eaf4;border-radius:13px;}
+.foundation-swatches{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 14px;}
+.foundation-swatch{width:37px;height:37px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #97b5c5;cursor:pointer;}
+.foundation-swatch.selected{box-shadow:0 0 0 4px #1876a5;transform:scale(1.07);}
+body.streamlined #btn-dash,body.streamlined #btn-gather,body.streamlined #assignment{display:none!important;}
+body.streamlined #action-zone{bottom:calc(26px + env(safe-area-inset-bottom));}
+@media(max-width:600px){.foundation-row{gap:6px;}.foundation-option{font-size:11px;padding:10px 4px;}.foundation-detail{padding:12px;}}
+
+.foundation-error{padding:10px 12px;background:#fff2ed;color:#a22b24;border:1px solid #e6a49c;border-radius:10px;margin:12px 0;font-size:13px;font-weight:800;}
+.foundation-error[hidden]{display:none!important;}
