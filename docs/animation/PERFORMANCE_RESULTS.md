@@ -46,7 +46,7 @@ Values below are medians of final rounds e and f. Frame times are milliseconds; 
 | 5v5 | Candidate | 16.70 | 16.80 | 16.80 |
 | 10v10 | Baseline | 16.70 | 16.75 | 16.80 |
 | 10v10 | Candidate | 16.70 | 16.70 | 16.80 |
-| 30v30 | Baseline | 16.70 | 16.75 | 16.80 |
+| 30v30 | Baseline | 16.70 | 16.70 | 16.80 |
 | 30v30 | Candidate | 16.70 | 16.75 | 16.80 |
 
 The values are consistent with a 60 Hz headless scheduling environment. They do not measure physical-device refresh behavior, thermal throttling, or GPU presentation latency.
