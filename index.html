@@ -1329,7 +1329,7 @@ function campaignMissions() {
     {label:'Bank 10 hill points', done:campaign.hill>=10, progress:Math.min(campaign.hill,10)+'/10'},
     {label:'Rescue a frozen teammate', done:!!campaign.rescue, progress:campaign.rescue?'1/1':'0/1'},
     {label:'Win a 5v5 match', done:!!campaign.win5v5, progress:campaign.win5v5?'1/1':'0/1'},
-    {label:'Win a match with every class', done:campaign.classes.length===4, progress:Math.min(campaign.classes.length,4)+'/4'}
+    {label:'Win a match with every class', done:campaign.classes.length>=4, progress:Math.min(campaign.classes.length,4)+'/4'},
   ];
 }
 function renderCampaign() {
@@ -1407,3 +1407,8 @@ gameLoop();
 <script src="assets/foundation-ui.js"></script>
 </body>
 </html>
+
+
+
+
+
