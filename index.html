@@ -3,12 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Snowbrawl: World War (Online)</title>
+    <title>SnowFight — Winter Edition</title>
+    <meta name="theme-color" content="#153e55">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="assets/manifest.webmanifest">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/ui.css">
     <link rel="stylesheet" href="assets/foundation.css">
     <script src="assets/socket.io.min.js"></script>
     <script src="assets/recruits.js"></script>
     <script src="assets/neighborhood.js"></script>
+    <script src="assets/animation.js"></script>
+    <script src="assets/presentation.js"></script>
     <style>
         :root { --btn-scale: 1; }
         body { 
@@ -17,6 +24,11 @@
             user-select: none; -webkit-user-select: none; 
         }
         canvas { display: block; }
+        #gameCanvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+        #presentation-controls { position:fixed; bottom:calc(10px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:45; display:flex; gap:6px; align-items:center; }
+        #presentation-controls button { position:static; transform:none; background:#153e55; color:white; border-radius:20px; padding:10px 12px; font-size:9px; font-weight:800; white-space:nowrap; }
+        #presentation-controls button:disabled { opacity:.65; font-size:8px; }
+        @media (max-height:500px) { #presentation-controls { bottom:calc(8px + env(safe-area-inset-bottom)); } #presentation-controls button { padding:8px 9px; } }
         .view-btn { font-weight: 900; font-size: 12px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.25); color: #334155; transition: all 0.15s; }
         .view-btn.view-active { background: #0ea5e9; color: #fff; }
         .menu-btn { background: rgba(15, 23, 42, 0.08); color: #334155; transition: all 0.15s; }
@@ -274,7 +286,11 @@
         <div id="combat-status">SNOWBALL READY</div>
         <div id="network-status">Connecting…</div>
     </div>
-    <button id="sound-toggle" onclick="toggleSound()" aria-pressed="false">SOUND ON</button>
+    <div id="presentation-controls" role="group" aria-label="Display and sound controls">
+        <button id="sound-toggle" type="button" onclick="toggleSound()" aria-pressed="false">SOUND ON</button>
+        <button id="effects-toggle" type="button" aria-pressed="false">FX HIGH</button>
+        <button id="fullscreen-toggle" type="button" aria-pressed="false">ENTER FULLSCREEN</button>
+    </div>
     <!-- Controls Layer -->
     <div id="controls-layer" class="hidden absolute inset-0 z-30 overflow-hidden pointer-events-none">
         <div id="joystick-zone">
@@ -324,7 +340,6 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matc
 const CONFIG = {
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
-    cameraLerp: 0.1,
     screenShake: 0
 };
 
@@ -343,14 +358,25 @@ const STATE = {
     worldWidth: 2000,
     worldHeight: 2000,
     camera: { x: 0, y: 0 },
+    renderCamera: { x: 0, y: 0, zoom: 1 },
+    winner: null,
+    lowEffects: false,
     players: {}, 
     obstacles: [],
     snowballs: [],
     structures: [],
-    particles: [],
     popups: [],
     footprints: [],
     inputs: { moveX: 0, moveY: 0, angle: 0, dash: false, gather: false, throwStart: false, throwRelease: false, ability: false }
+};
+window.STATE = STATE;
+const SNOW_EFFECTS = new SnowAnimation.EffectPool(240);
+const SNOW_PROJECTILES = new SnowAnimation.ProjectileVisualizer(SNOW_EFFECTS);
+const SNOW_PERF = new SnowAnimation.PerformanceMonitor(600);
+window.SNOW_EFFECTS = SNOW_EFFECTS;
+window.SNOW_DEBUG = {
+    performance: () => SNOW_PERF.snapshot(Object.keys(STATE.players).length, SNOW_EFFECTS.activeCount),
+    animationStates: () => Object.fromEntries(Object.entries(STATE.players).map(([id, p]) => [id, p.animState]))
 };
 
 /**
@@ -417,11 +443,14 @@ class VisualPlayer {
         this.hatColor = data.hatColor || '#313C4F';
         this.autoReload = data.autoReload === true;
         this.teamColor = this.team === 'blue' ? '#2196F3' : '#F44336';
-        this.teamColorDark = this.team === 'blue' ? '#1976D2' : '#D32F2F';
 
-        this.facingAngle = 0;
+        this.facingAngle = data.inputs?.angle || 0;
+        this.targetFacingAngle = this.facingAngle;
         this.walkCycle = 0;
         this.flashTimer = 0;
+        this.receivedAt = performance.now();
+        this.localAimUntil = 0;
+        this.animation = new SnowAnimation.AnimationStateMachine();
     }
 
     update(serverData) {
@@ -440,7 +469,7 @@ class VisualPlayer {
 
         this.vx = serverData.vx || 0;
         this.vy = serverData.vy || 0;
-        this.facingAngle = serverData.inputs.angle;
+        this.targetFacingAngle = serverData.inputs?.angle || 0;
         this.dashCooldownTimer = serverData.dashCooldownTimer;
         this.freezeTicks = serverData.freezeTicks || 0;
         this.stats = serverData.stats || { freezes: 0, throws: 0, dashes: 0 };
@@ -448,115 +477,62 @@ class VisualPlayer {
     }
 
     animate(dt, now) {
-        this.recoil = Math.max(0,this.recoil-dt/180);
+        this.recoil = Math.max(0, this.recoil - dt / 180);
         // Bounded dead reckoning between snapshots; never simulate hits locally.
-        const age = Math.min(50, Math.max(0, now - this.receivedAt)) / (1000/60);
+        const age = Math.min(50, Math.max(0, now - this.receivedAt)) / (1000 / 60);
         const blend = 1 - Math.exp(-dt / (this.id === STATE.id ? 24 : 45));
         this.x += (this.targetX + (this.isFrozen ? 0 : this.vx * age) - this.x) * blend;
         this.y += (this.targetY + (this.isFrozen ? 0 : this.vy * age) - this.y) * blend;
-        if (this.id === STATE.id) this.facingAngle = STATE.inputs.angle;
+        if (this.id === STATE.id) this.targetFacingAngle = STATE.inputs.angle;
+        const angleDelta = Math.atan2(Math.sin(this.targetFacingAngle - this.facingAngle), Math.cos(this.targetFacingAngle - this.facingAngle));
+        this.facingAngle += angleDelta * (1 - Math.exp(-dt / 55));
         const speed = Math.hypot(this.vx, this.vy);
-        this.walkCycle = speed > 0.3 ? this.walkCycle + dt * speed * 0.012 : 0;
-        if (speed > 1 && Math.random() < dt / 170 && STATE.footprints.length < 240)
-            STATE.footprints.push({ x:this.x, y:this.y+10, life:200, angle:this.facingAngle });
-        this.flashTimer = Math.max(0, this.flashTimer - dt / 16.67);
+        if (speed > 0.22 && !this.isFrozen) this.walkCycle += dt * speed * (speed > 3.05 ? 0.017 : 0.012);
+        const footprintLimit = STATE.lowEffects ? 80 : 180;
+        if (!reducedMotion && speed > 1 && Math.random() < dt / 190 && STATE.footprints.length < footprintLimit)
+            STATE.footprints.push({ x: this.x, y: this.y + 10, life: 2600, angle: this.facingAngle });
+        const pose = this.animation.update({
+            isFrozen: this.isFrozen, chargeLevel: this.chargeLevel,
+            localAim: now < this.localAimUntil, speed,
+            ended: STATE.ended, winner: STATE.winner, team: this.team
+        }, now);
+        this.animState = pose.state;
+        this.stateTime = pose.stateTime;
+        this.throwKind = pose.throwKind;
+        this.reducedMotion = reducedMotion;
+        this.flashTimer = Math.max(0, this.flashTimer - dt);
+    }
+
+    beginLocalThrow() {
+        if (this.hasBall && !this.isFrozen) this.localAimUntil = performance.now() + 4000;
+    }
+    releaseLocalThrow() {
+        if (!this.hasBall || this.isFrozen) return;
+        this.localAimUntil = 0;
+        this.animation.triggerThrow(this.chargeLevel || 1, performance.now());
+        this.recoil = 1;
     }
 
     draw(camX, camY) {
         const drawX = this.x - camX;
         const drawY = this.y - camY;
-        const bob = Math.sin(this.walkCycle * 2) * 2;
-        const scale = this.gatherProgress > 0 ? 0.9 : 1;
-
-        if (this.flashTimer > 0) { ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#FFF'; }
-
         ctx.save();
-        ctx.translate(drawX, drawY + bob);
-        ctx.scale(scale, scale);
-
-        if (this.classId !== 'classic' || this.autoReload) {
-            drawSnowRecruit(ctx,this);
-            ctx.restore();
-            if (this.id === STATE.id) {
-                ctx.fillStyle='#ffcf70';ctx.beginPath();ctx.moveTo(drawX-5,drawY-64);ctx.lineTo(drawX+5,drawY-64);ctx.lineTo(drawX,drawY-57);ctx.fill();
-            }
-            return;
-        }
-        if (this.isFrozen) {
-            ctx.fillStyle = 'rgba(179, 229, 252, 0.6)';
-            ctx.fillRect(-16, -24, 32, 40);
-            ctx.strokeStyle = '#FFF'; ctx.strokeRect(-16, -24, 32, 40);
-            ctx.fillStyle = this.teamColor; ctx.beginPath(); ctx.arc(0, -10, 10, 0, Math.PI*2); ctx.fill();
-        } else {
-            // Legs
-            const legOffset = Math.sin(this.walkCycle) * 6;
-            ctx.fillStyle = '#333'; 
-            ctx.beginPath(); ctx.arc(-6, 8 + legOffset, 4, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(6, 8 - legOffset, 4, 0, Math.PI*2); ctx.fill();
-
-            // Body
-            ctx.fillStyle = this.teamColor;
-            ctx.beginPath(); ctx.roundRect(-12, -10, 24, 20, 8); ctx.fill();
-            ctx.fillStyle = this.teamColorDark; ctx.fillRect(-2, -10, 4, 20);
-
-            // Head
-            ctx.fillStyle = this.skinColor;
-            ctx.beginPath(); ctx.arc(0, -16, 9, 0, Math.PI*2); ctx.fill();
-
-            // Hat
-            if (this.hatType === 1) { 
-                ctx.fillStyle = this.teamColorDark; ctx.beginPath(); ctx.arc(0, -20, 9, Math.PI, 0); ctx.fill(); ctx.beginPath(); ctx.arc(0, -24, 3, 0, Math.PI*2); ctx.fill();
-            } else if (this.hatType === 2) { 
-                ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, -16, 9.5, Math.PI, 0); ctx.stroke();
-                ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(-9, -16, 4, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(9, -16, 4, 0, Math.PI*2); ctx.fill();
-            } else if (this.hatType === 3) {
-                 ctx.strokeStyle = this.teamColor; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -16, 10, 0, Math.PI*2); ctx.stroke();
-            }
-
-            // Eyes & Hands
-            const eyeOffX = Math.cos(this.facingAngle) * 3;
-            const eyeOffY = Math.sin(this.facingAngle) * 3;
-            ctx.fillStyle = '#000';
-            ctx.beginPath(); ctx.arc(-2 + eyeOffX, -16 + eyeOffY, 1.5, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(2 + eyeOffX, -16 + eyeOffY, 1.5, 0, Math.PI*2); ctx.fill();
-
-            const hx = Math.cos(this.facingAngle) * 10;
-            const hy = Math.sin(this.facingAngle) * 10;
-            
-            if (this.hasBall) {
-                ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(hx, hy - 2, 5, 0, Math.PI*2); ctx.fill();
-                if (this.chargeLevel > 0) {
-                    ctx.strokeStyle = `rgba(255,255,255,${this.chargeLevel/60})`;
-                    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, hy-2, 8, 0, Math.PI*2); ctx.stroke();
-                }
-            } else {
-                 ctx.fillStyle = this.teamColorDark; ctx.beginPath(); ctx.arc(-10, 0, 3, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(10, 0, 3, 0, Math.PI*2); ctx.fill();
-            }
-        }
+        ctx.translate(drawX, drawY);
+        // Gathering compresses the silhouette briefly; it never changes hitboxes.
+        const gatherScale = this.gatherProgress > 0 && !this.autoReload ? 0.94 : 1;
+        ctx.scale(gatherScale, gatherScale);
+        drawSnowRecruit(ctx, this, performance.now());
         ctx.restore();
-
-        // Self Indicator
         if (this.id === STATE.id) {
-            ctx.fillStyle = '#FFD700';
-            ctx.beginPath(); ctx.moveTo(drawX - 5, drawY - 45); ctx.lineTo(drawX + 5, drawY - 45); ctx.lineTo(drawX, drawY - 38); ctx.fill();
+            ctx.fillStyle = '#ffcf70';
+            ctx.strokeStyle = '#7a5520';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(drawX - 6, drawY - 66);
+            ctx.lineTo(drawX + 6, drawY - 66);
+            ctx.lineTo(drawX, drawY - 57);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
         }
-    }
-}
-
-class Particle {
-    constructor(x, y, color) {
-        this.x = x; this.y = y; this.color = color;
-        this.vx = (Math.random() - 0.5) * 4;
-        this.vy = (Math.random() - 0.5) * 4;
-        this.life = 1.0;
-    }
-    update() { this.x += this.vx; this.y += this.vy; this.life -= 0.05; }
-    draw(cx, cy) {
-        if (this.life <= 0) return;
-        ctx.globalAlpha = this.life;
-        ctx.fillStyle = this.color;
-        ctx.beginPath(); ctx.arc(this.x - cx, this.y - cy, 3, 0, Math.PI*2); ctx.fill();
-        ctx.globalAlpha = 1;
     }
 }
 
@@ -575,8 +551,8 @@ class Popup {
     }
 }
 
-function createParticles(x, y, color, count) {
-    for(let i=0; i<count && STATE.particles.length < 180; i++) STATE.particles.push(new Particle(x, y, color));
+function createParticles(x, y, color, count, kind) {
+    SNOW_EFFECTS.burst(x, y, color, count, kind);
 }
 
 function addPopup(x, y, text, color) {
@@ -609,9 +585,11 @@ socket.on('connect', () => {
 });
 
 socket.on('init', (data) => {
-    STATE.players = {}; STATE.snowballs = []; STATE.particles = []; STATE.popups = [];
+    STATE.players = {}; STATE.snowballs = []; STATE.popups = []; STATE.footprints = [];
+    SNOW_EFFECTS.clear(); SNOW_PROJECTILES.clear();
+    clearTimeout(STATE.resultsTimer);
     resetControls();
-    STATE.ended = false; STATE.savedResult = false;
+    STATE.ended = false; STATE.winner = null; STATE.cameraReady = false; STATE.savedResult = false;
     document.getElementById('field-hud').classList.remove('hidden');
     STATE.classConfig = data.classes || {};
     STATE.classId = data.classId || 'classic';
@@ -676,6 +654,7 @@ socket.on('state', (serverData) => {
     STATE.serverTick=serverData.tick;
     STATE.snowballs = serverData.snowballs;
     STATE.snapshotAt = performance.now();
+    SNOW_PROJECTILES.sync(STATE.snowballs, STATE.snapshotAt);
     updateFieldHud();
     if (serverData.match?.ended && !STATE.ended) showResults(serverData.match);
 
@@ -707,12 +686,21 @@ socket.on('state', (serverData) => {
 socket.on('abilityDenied', data => { const el=document.getElementById('ability-clock');el.textContent=data.reason;STATE.abilityNoticeUntil=performance.now()+1500; });
 socket.on('effect', (data) => {
     if(data.type==='parent_react') {STATE.parentReactUntil=performance.now()+1800;createParticles(data.x,data.y,'#fff',12);}
-    if (['throw','cannon'].includes(data.type) && STATE.players[data.id]) STATE.players[data.id].recoil=1;
+    if (['throw','cannon'].includes(data.type) && STATE.players[data.id]) {
+        const player=STATE.players[data.id];
+        player.animation.triggerThrow(player.chargeLevel || 1, performance.now());
+        player.recoil=1;
+        createParticles(data.x,data.y,'#f8fdff',3,'release');
+    }
     if (['guard','guard_hit','build','shatter','cannon'].includes(data.type)) {
-        createParticles(data.x,data.y,data.type==='cannon'?'#ffd79a':'#c4f7ff',data.type==='shatter'?24:12);
+        createParticles(data.x,data.y,data.type==='cannon'?'#ffd79a':'#c4f7ff',data.type==='shatter'?24:12,data.type==='guard_hit'?'blocked':'flake');
+        if(data.type==='guard_hit') SNOW_PROJECTILES.markImpact(data.x,data.y,performance.now());
         if(data.id===STATE.id) { Audio.playTone(data.type==='cannon'?100:650,'triangle',0.15,0.12,300); addPopup(data.x,data.y-45,{guard:'ICE GUARD',guard_hit:'BLOCKED',build:'COVER UP',cannon:'CANNON'}[data.type]||'', '#205775'); }
     }
-    if (data.type === 'obs_hit') createParticles(data.x, data.y, '#d3f6ff', 6);
+    if (data.type === 'obs_hit') {
+        SNOW_PROJECTILES.markImpact(data.x,data.y,performance.now());
+        createParticles(data.x, data.y, '#d3f6ff', 9, 'scenery');
+    }
     if (data.type === 'dash') {
         createParticles(data.x, data.y, '#FFF', 5);
         if (Math.hypot(STATE.camera.x - data.x, STATE.camera.y - data.y) < 800) Audio.sfx.dash();
@@ -734,18 +722,20 @@ socket.on('effect', (data) => {
 });
 
 socket.on('hit', (data) => {
+    SNOW_PROJECTILES.markImpact(data.x,data.y,performance.now());
     if (data.ownerId === STATE.id) {
         addPopup(data.x, data.y-35, 'NICE SHOT +1', '#0369a1');
         if (!Audio.muted && navigator.vibrate) navigator.vibrate(15);
     }
-    createParticles(data.x, data.y, '#FFF', 15);
+    createParticles(data.x, data.y, '#FFF', 19, 'player');
     Audio.sfx.hit();
     if (STATE.players[data.id]) {
-        STATE.players[data.id].flashTimer = 10;
+        STATE.players[data.id].flashTimer = 180;
+        STATE.players[data.id].animation.triggerHit(performance.now());
         addPopup(data.x, data.y, "HIT!", "#FFFF00");
     }
     if (data.id === STATE.id) {
-        CONFIG.screenShake = reducedMotion ? 0 : 10;
+        CONFIG.screenShake = reducedMotion || STATE.lowEffects ? 0 : 6;
         addPopup(data.x, data.y, "FROZEN!", "#00FFFF");
     }
 });
@@ -754,7 +744,7 @@ socket.on('hit', (data) => {
 // player's own team scored more freezes, DEFEAT when it scored fewer.
 function showResults(data) {
     if (STATE.ended) return;
-    STATE.ended = true; resetControls();
+    STATE.ended = true; STATE.winner = data.winner; resetControls();
     const title = document.getElementById('results-title');
     if (data.winner === 'draw') {
         title.innerText = 'DRAW';
@@ -798,7 +788,8 @@ function showResults(data) {
       localStorage.setItem('snowbrawl-campaign-v1', JSON.stringify(campaign));
       renderCampaign();
     } catch {}
-    document.getElementById('results-overlay').classList.remove('hidden');
+    // Let the server-confirmed celebration read before covering the arena.
+    STATE.resultsTimer=setTimeout(()=>document.getElementById('results-overlay').classList.remove('hidden'),reducedMotion?100:750);
 }
 // Use the following final snapshot for exact personal stats, not the earlier event.
 socket.on('matchEnd', () => { resetControls(); });
@@ -960,33 +951,42 @@ function gameLoop(now = performance.now()) {
     if (!document.getElementById('start-screen').classList.contains('hidden')) drawRecruitPreview(now);
 
     // --- CAMERA ---
+    const renderStarted = performance.now();
+    const vw = CONFIG.viewportWidth, vh = CONFIG.viewportHeight;
+    const responsiveZoom = SnowAnimation.clamp(Math.min(vw / 844, vh / 390), 0.85, 1.15);
+    const zoom = VIEWS[STATE.viewIndex].zoom * responsiveZoom;
     let shakeX = 0, shakeY = 0;
-    if (CONFIG.screenShake > 0) {
+    if (CONFIG.screenShake > 0 && !reducedMotion && !STATE.lowEffects) {
         shakeX = (Math.random() - 0.5) * CONFIG.screenShake;
         shakeY = (Math.random() - 0.5) * CONFIG.screenShake;
-        CONFIG.screenShake *= 0.9;
+        CONFIG.screenShake *= Math.exp(-dt / 55);
+        if (CONFIG.screenShake < 0.05) CONFIG.screenShake = 0;
     }
 
     const myPlayer = STATE.players[STATE.id];
     if (myPlayer) {
-        let tx = myPlayer.x - CONFIG.viewportWidth / 2;
-        let ty = myPlayer.y - CONFIG.viewportHeight / 2;
-        tx = Math.max(0, Math.min(tx, STATE.worldWidth - CONFIG.viewportWidth));
-        ty = Math.max(0, Math.min(ty, STATE.worldHeight - CONFIG.viewportHeight));
-        STATE.camera.x += (tx - STATE.camera.x) * CONFIG.cameraLerp;
-        STATE.camera.y += (ty - STATE.camera.y) * CONFIG.cameraLerp;
+        const lead = reducedMotion ? 0 : (STATE.lowEffects ? 12 : 28);
+        let tx = myPlayer.x + Math.cos(STATE.inputs.angle) * lead - vw / 2;
+        let ty = myPlayer.y + Math.sin(STATE.inputs.angle) * lead * 0.65 - vh / 2;
+        const minX = vw / 2 - vw / (2 * zoom), maxX = STATE.worldWidth - vw / 2 - vw / (2 * zoom);
+        const minY = vh / 2 - vh / (2 * zoom), maxY = STATE.worldHeight - vh / 2 - vh / (2 * zoom);
+        tx = minX > maxX ? (STATE.worldWidth - vw) / 2 : SnowAnimation.clamp(tx, minX, maxX);
+        ty = minY > maxY ? (STATE.worldHeight - vh) / 2 : SnowAnimation.clamp(ty, minY, maxY);
+        if (!STATE.cameraReady) { STATE.camera.x = tx; STATE.camera.y = ty; STATE.cameraReady = true; }
+        const cameraBlend = 1 - Math.exp(-dt / 85);
+        STATE.camera.x += (tx - STATE.camera.x) * cameraBlend;
+        STATE.camera.y += (ty - STATE.camera.y) * cameraBlend;
     }
 
     const cx = STATE.camera.x + shakeX;
     const cy = STATE.camera.y + shakeY;
+    STATE.renderCamera.x = cx; STATE.renderCamera.y = cy; STATE.renderCamera.zoom = zoom;
 
     // --- RENDER ---
     ctx.fillStyle = '#dbeef3';
-    ctx.fillRect(0, 0, CONFIG.viewportWidth, CONFIG.viewportHeight);
+    ctx.fillRect(0, 0, vw, vh);
 
     // Zoom about the screen center so the player stays centered at any view.
-    const zoom = VIEWS[STATE.viewIndex].zoom;
-    const vw = CONFIG.viewportWidth, vh = CONFIG.viewportHeight;
     const viewW = vw / zoom, viewH = vh / zoom;
     const visX0 = cx + vw / 2 - viewW / 2, visX1 = cx + vw / 2 + viewW / 2;
     const visY0 = cy + vh / 2 - viewH / 2, visY1 = cy + vh / 2 + viewH / 2;
@@ -1033,11 +1033,11 @@ function gameLoop(now = performance.now()) {
     // Footprints
     for(let i=STATE.footprints.length-1; i>=0; i--) {
         const fp = STATE.footprints[i];
-        fp.life--;
+        fp.life -= dt;
         if(fp.life <= 0) { STATE.footprints.splice(i,1); continue; }
         if (fp.x < visX0 || fp.x > visX1 || fp.y < visY0 || fp.y > visY1) continue;
         ctx.save(); ctx.translate(fp.x - cx, fp.y - cy); ctx.rotate(fp.angle);
-        ctx.fillStyle = `rgba(255,255,255,${fp.life/200})`;
+        ctx.fillStyle = `rgba(86,137,158,${Math.min(.26,fp.life/2600*.26)})`;
         ctx.beginPath(); ctx.ellipse(0, -3, 3, 2, 0, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(0, 3, 3, 2, 0, 0, Math.PI*2); ctx.fill();
         ctx.restore();
@@ -1101,18 +1101,16 @@ function gameLoop(now = performance.now()) {
     const renderList = Object.values(STATE.players).sort((a,b) => a.y - b.y);
     renderList.forEach(p => { if (p.x > visX0-60 && p.x < visX1+60 && p.y > visY0-60 && p.y < visY1+60) p.draw(cx, cy); });
 
-    // Snowballs
+    // Snowballs: server position plus bounded visual interpolation and trail history.
     STATE.snowballs.forEach(b => {
         const age = Math.min(33, Math.max(0, now-(STATE.snapshotAt || now))) / 16.667;
         const dx = b.x + b.vx*age - cx; const dy = b.y + b.vy*age - cy - b.z;
-        ctx.strokeStyle = b.team === 'blue' ? '#7cbce0' : '#e5a4a4'; ctx.lineWidth = b.radius;
-        ctx.beginPath(); ctx.moveTo(dx-b.vx*0.8, dy-b.vy*0.8); ctx.lineTo(dx, dy); ctx.stroke();
-        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(b.x - cx, b.y - cy, b.radius, 0, Math.PI*2); ctx.fill(); 
-        ctx.fillStyle = b.kind==='cannon'?'#ffe5a8':b.kind==='needle'?'#e7ddff':'#FFF'; ctx.beginPath(); ctx.arc(dx, dy, b.radius, 0, Math.PI*2); ctx.fill();
+        SNOW_PROJECTILES.draw(ctx,b,cx,cy,dx,dy,reducedMotion,STATE.lowEffects);
     });
 
-    // Particles/Popups
-    STATE.particles = STATE.particles.filter(p => { p.update(); p.draw(cx, cy); return p.life > 0; });
+    // Bounded particles and short-lived combat text.
+    SNOW_EFFECTS.update(dt);
+    SNOW_EFFECTS.draw(ctx,cx,cy);
     STATE.popups = STATE.popups.filter(p => { p.update(); p.draw(cx, cy); return p.life > 0; });
 
     ctx.restore();
@@ -1128,13 +1126,25 @@ function gameLoop(now = performance.now()) {
         ctx.globalAlpha=1;
         ctx.fillStyle='#173b51';ctx.font='bold 9px Arial';ctx.fillText('FIELD RADAR',rx+16,ry+76);
     }
+    SNOW_PERF.add(dt,performance.now()-renderStarted);
 }
 
 /**
  * --- INPUTS ---
  */
-function resize() { CONFIG.viewportWidth = window.innerWidth; CONFIG.viewportHeight = window.innerHeight; canvas.width = CONFIG.viewportWidth; canvas.height = CONFIG.viewportHeight; }
+function resize() {
+    CONFIG.viewportWidth = Math.max(1, window.innerWidth);
+    CONFIG.viewportHeight = Math.max(1, window.innerHeight);
+    const dpr = Math.min(window.devicePixelRatio || 1, STATE.lowEffects ? 1.5 : 2);
+    canvas.width = Math.round(CONFIG.viewportWidth * dpr);
+    canvas.height = Math.round(CONFIG.viewportHeight * dpr);
+    canvas.style.width = CONFIG.viewportWidth + 'px';
+    canvas.style.height = CONFIG.viewportHeight + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    if (STATE.id) resetControls();
+}
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange',()=>setTimeout(resize,80));
 resize();
 
 // --- CAMERA VIEWS ---
@@ -1189,8 +1199,8 @@ function practiceTapAim() {
     }
     if(target) STATE.inputs.angle=Math.atan2(target.y-me.y,target.x-me.x);
 }
-bindPointer(btnThrow, e => { aimPointer=e.pointerId; draggedAim=false; aimOrigin={x:e.clientX,y:e.clientY}; STATE.inputs.throwStart=true; }, dragAim,
-    (_e,cancel) => { if(!cancel&&!draggedAim)practiceTapAim(); aimPointer=null; STATE.inputs.throwRelease=!cancel; if(cancel) resetControls(); });
+bindPointer(btnThrow, e => { aimPointer=e.pointerId; draggedAim=false; aimOrigin={x:e.clientX,y:e.clientY}; STATE.players[STATE.id]?.beginLocalThrow(); STATE.inputs.throwStart=true; }, dragAim,
+    (_e,cancel) => { if(!cancel&&!draggedAim)practiceTapAim(); if(!cancel)STATE.players[STATE.id]?.releaseLocalThrow(); aimPointer=null; STATE.inputs.throwRelease=!cancel; if(cancel) resetControls(); });
 bindPointer(btnAbility, () => STATE.inputs.ability=true, () => {}, () => {});
 btnAbility.addEventListener('click', e=>{if(e.detail===0 && STATE.id && !STATE.ended) STATE.inputs.ability=true;});
 bindPointer(btnDash, () => STATE.inputs.dash=true, () => {}, () => {});
@@ -1246,6 +1256,7 @@ function resetControls() {
     if (STATE.id && socket.connected) socket.emit('input', { ...STATE.inputs, cancelCharge:true });
     if (typeof keys !== 'undefined') keys.clear();
     aimPointer=null;
+    if (STATE.players[STATE.id]) STATE.players[STATE.id].localAimUntil=0;
 }
 window.addEventListener('blur', resetControls);
 document.addEventListener('visibilitychange', () => { if(document.hidden) resetControls(); });
@@ -1256,14 +1267,14 @@ window.addEventListener('keydown', e => {
     if(e.repeat) return;
     keys.add(k); keyboardMovement();
     if (controlScheme==='arrows') {
-        if(k===' ') STATE.inputs.throwStart=true;
+        if(k===' ') { STATE.players[STATE.id]?.beginLocalThrow(); STATE.inputs.throwStart=true; }
         if(k==='shift') STATE.inputs.dash=true;
-        if(k==='f') STATE.inputs.throwStart=true;
+        if(k==='f') { STATE.players[STATE.id]?.beginLocalThrow(); STATE.inputs.throwStart=true; }
         if(k==='g') STATE.inputs.gather=true;
         if(k==='e') STATE.inputs.ability=true;
     } else if (controlScheme==='wasd') {
         if(k===' ') STATE.inputs.dash=true;
-        if(k==='f') STATE.inputs.throwStart=true;
+        if(k==='f') { STATE.players[STATE.id]?.beginLocalThrow(); STATE.inputs.throwStart=true; }
         if(k==='g') STATE.inputs.gather=true;
         if(k==='e') STATE.inputs.ability=true;
     }
@@ -1272,8 +1283,8 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => {
     const k=e.key.toLowerCase(); keys.delete(k); keyboardMovement();
-    if (controlScheme==='arrows' && (k===' ' || k==='f')) STATE.inputs.throwRelease=true;
-    if (controlScheme==='wasd' && k==='f') STATE.inputs.throwRelease=true;
+    if (controlScheme==='arrows' && (k===' ' || k==='f')) { STATE.players[STATE.id]?.releaseLocalThrow(); STATE.inputs.throwRelease=true; }
+    if (controlScheme==='wasd' && k==='f') { STATE.players[STATE.id]?.releaseLocalThrow(); STATE.inputs.throwRelease=true; }
     if(k==='g') STATE.inputs.gather=false;
 });
 
@@ -1282,21 +1293,21 @@ window.addEventListener('mousemove', (e) => {
     if (controlScheme!=='wasd') return;
     const p = STATE.players[STATE.id];
     if (!p || aimPointer !== null) return;
-    const zoom = VIEWS[STATE.viewIndex].zoom;
-    const px = CONFIG.viewportWidth / 2 + (p.x - STATE.camera.x - CONFIG.viewportWidth / 2) * zoom;
-    const py = CONFIG.viewportHeight / 2 + (p.y - STATE.camera.y - CONFIG.viewportHeight / 2) * zoom;
+    const camera = STATE.renderCamera, zoom = camera.zoom;
+    const px = CONFIG.viewportWidth / 2 + (p.x - camera.x - CONFIG.viewportWidth / 2) * zoom;
+    const py = CONFIG.viewportHeight / 2 + (p.y - camera.y - CONFIG.viewportHeight / 2) * zoom;
     STATE.inputs.angle = Math.atan2(e.clientY - py, e.clientX - px);
 });
 let mouseAction = null;
 canvas.addEventListener('pointerdown', e => {
     if(e.pointerType!=='mouse' || controlScheme!=='wasd' || !STATE.id || STATE.ended) return;
     canvas.setPointerCapture(e.pointerId); mouseAction=e.button;
-    if(e.button===0) STATE.inputs.throwStart=true;
+    if(e.button===0) { STATE.players[STATE.id]?.beginLocalThrow(); STATE.inputs.throwStart=true; }
     if(e.button===2) STATE.inputs.gather=true;
 });
 canvas.addEventListener('pointerup', e => {
     if(e.pointerType!=='mouse' || mouseAction===null) return;
-    if(mouseAction===0) STATE.inputs.throwRelease=true;
+    if(mouseAction===0) { STATE.players[STATE.id]?.releaseLocalThrow(); STATE.inputs.throwRelease=true; }
     if(mouseAction===2) STATE.inputs.gather=false;
     mouseAction=null;
 });
@@ -1318,7 +1329,7 @@ function campaignMissions() {
     {label:'Bank 10 hill points', done:campaign.hill>=10, progress:Math.min(campaign.hill,10)+'/10'},
     {label:'Rescue a frozen teammate', done:!!campaign.rescue, progress:campaign.rescue?'1/1':'0/1'},
     {label:'Win a 5v5 match', done:!!campaign.win5v5, progress:campaign.win5v5?'1/1':'0/1'},
-    {label:'Win a match with every class', done:campaign.classes.length>=4, progress:Math.min(campaign.classes.length,4)+'/4'},
+    {label:'Win a match with every class', done:campaign.classes.length===4, progress:Math.min(campaign.classes.length,4)+'/4'}
   ];
 }
 function renderCampaign() {
@@ -1396,7 +1407,3 @@ gameLoop();
 <script src="assets/foundation-ui.js"></script>
 </body>
 </html>
-
-
-
-
