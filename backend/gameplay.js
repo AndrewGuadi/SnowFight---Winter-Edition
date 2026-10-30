@@ -4,6 +4,7 @@ function sanitizeInput(data) {
     const length = Math.max(1, Math.hypot(data.moveX, data.moveY));
     return { moveX: data.moveX / length, moveY: data.moveY / length,
         angle: Math.atan2(Math.sin(data.angle), Math.cos(data.angle)),
+        seq: Number.isSafeInteger(data.seq) && data.seq >= 0 ? data.seq : 0,
         cancelCharge: data.cancelCharge === true,
         ability: data.ability === true,
         dash: data.dash === true, gather: data.gather === true,

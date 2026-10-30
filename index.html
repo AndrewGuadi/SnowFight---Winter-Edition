@@ -8,6 +8,7 @@
     <script src="assets/socket.io.min.js"></script>
     <script src="assets/recruits.js"></script>
     <script src="assets/neighborhood.js"></script>
+    <script src="assets/prediction.js"></script>
     <style>
         :root { --btn-scale: 1; }
         body { 
@@ -315,7 +316,10 @@ const SERVER_URL = ['localhost', '127.0.0.1'].includes(location.hostname)
     ? location.origin : "https://snowbrawl-server.onrender.com/";
 // Example: const SERVER_URL = "https://snowbrawl-backend.onrender.com";
 
-const socket = io(SERVER_URL);
+const socket = io(SERVER_URL, {
+    transports: ['websocket', 'polling'],
+    upgrade: false
+});
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -349,6 +353,12 @@ const STATE = {
     particles: [],
     popups: [],
     footprints: [],
+    inputSeq: 1,
+    inputHistory: [],
+    predictionAccumulator: 0,
+    snapshotCount: 0,
+    lastSnapshotBytes: 0,
+    measureNextSnapshot: false,
     inputs: { moveX: 0, moveY: 0, angle: 0, dash: false, gather: false, throwStart: false, throwRelease: false, ability: false }
 };
 
@@ -418,6 +428,7 @@ class VisualPlayer {
         this.facingAngle = 0;
         this.walkCycle = 0;
         this.flashTimer = 0;
+        this.dashTimer = 0;
     }
 
     update(serverData) {
@@ -437,15 +448,25 @@ class VisualPlayer {
         this.freezeTicks = serverData.freezeTicks || 0;
         this.stats = serverData.stats || { freezes: 0, throws: 0, dashes: 0 };
         this.receivedAt = performance.now();
+        this.ack = serverData.ack;
+        if (this.id === STATE.id && Number.isSafeInteger(serverData.ack)) {
+            SnowPrediction.reconcile(this, serverData, STATE.inputHistory, predictionWorld());
+            this.targetX = this.x;
+            this.targetY = this.y;
+        }
     }
 
     animate(dt, now) {
         this.recoil = Math.max(0,this.recoil-dt/180);
-        // Bounded dead reckoning between snapshots; never simulate hits locally.
-        const age = Math.min(50, Math.max(0, now - this.receivedAt)) / (1000/60);
-        const blend = 1 - Math.exp(-dt / (this.id === STATE.id ? 24 : 45));
-        this.x += (this.targetX + (this.isFrozen ? 0 : this.vx * age) - this.x) * blend;
-        this.y += (this.targetY + (this.isFrozen ? 0 : this.vy * age) - this.y) * blend;
+        if (this.id === STATE.id && Number.isSafeInteger(this.ack)) {
+            advanceLocalPrediction(this, dt);
+        } else {
+            // Bounded dead reckoning between snapshots; never simulate hits locally.
+            const age = Math.min(50, Math.max(0, now - this.receivedAt)) / (1000/60);
+            const blend = 1 - Math.exp(-dt / 45);
+            this.x += (this.targetX + (this.isFrozen ? 0 : this.vx * age) - this.x) * blend;
+            this.y += (this.targetY + (this.isFrozen ? 0 : this.vy * age) - this.y) * blend;
+        }
         if (this.id === STATE.id) this.facingAngle = STATE.inputs.angle;
         const speed = Math.hypot(this.vx, this.vy);
         this.walkCycle = speed > 0.3 ? this.walkCycle + dt * speed * 0.012 : 0;
@@ -576,6 +597,42 @@ function addPopup(x, y, text, color) {
     STATE.popups.push(new Popup(x, y, text, color));
 }
 
+function predictionWorld() {
+    return {
+        width: STATE.worldWidth,
+        height: STATE.worldHeight,
+        obstacles: STATE.obstacles,
+        structures: STATE.structures,
+        classes: STATE.classConfig
+    };
+}
+
+function advanceLocalPrediction(player, dt) {
+    if (player.isFrozen || STATE.ended || document.hidden) {
+        STATE.predictionAccumulator = 0;
+        return;
+    }
+    const tick = 1000 / 60;
+    // A 120 Hz frame can clear a dash edge before a normal 60 Hz tick.
+    // Force that edge into the next prediction step instead of losing it.
+    if (STATE.inputs.dash) STATE.predictionAccumulator = Math.max(STATE.predictionAccumulator, tick);
+    STATE.predictionAccumulator = Math.min(100, STATE.predictionAccumulator + dt);
+    while (STATE.predictionAccumulator >= tick) {
+        const input = {
+            seq: STATE.inputSeq,
+            moveX: STATE.inputs.moveX,
+            moveY: STATE.inputs.moveY,
+            dash: STATE.inputs.dash,
+            gather: STATE.inputs.gather
+        };
+        STATE.inputHistory.push(input);
+        SnowPrediction.step(player, input, predictionWorld());
+        STATE.predictionAccumulator -= tick;
+    }
+    player.targetX = player.x;
+    player.targetY = player.y;
+}
+
 /**
  * --- SOCKET & NETWORK ---
  */
@@ -603,6 +660,10 @@ socket.on('connect', () => {
 socket.on('init', (data) => {
     STATE.players = {}; STATE.snowballs = []; STATE.particles = []; STATE.popups = [];
     resetControls();
+    STATE.inputSeq = 1;
+    STATE.inputHistory = [];
+    STATE.predictionAccumulator = 0;
+    STATE.snapshotCount = 0;
     STATE.ended = false; STATE.savedResult = false;
     document.getElementById('field-hud').classList.remove('hidden');
     STATE.classConfig = data.classes || {};
@@ -666,6 +727,11 @@ socket.on('state', (serverData) => {
     STATE.serverTick=serverData.tick;
     STATE.snowballs = serverData.snowballs;
     STATE.snapshotAt = performance.now();
+    STATE.snapshotCount++;
+    if (STATE.measureNextSnapshot) {
+        STATE.lastSnapshotBytes = new TextEncoder().encode(JSON.stringify(serverData)).length;
+        STATE.measureNextSnapshot = false;
+    }
     updateFieldHud();
     if (serverData.match?.ended && !STATE.ended) showResults(serverData.match);
 
@@ -936,16 +1002,18 @@ let previousFrame = performance.now(), lastInputSent = 0;
 function gameLoop(now = performance.now()) {
     requestAnimationFrame(gameLoop);
     const dt = Math.min(50, Math.max(0, now - previousFrame)); previousFrame = now;
+    // Predict before action edges are cleared below. Combat stays authoritative.
+    Object.values(STATE.players).forEach(p => p.animate(dt, now));
     // 30Hz movement, immediate action edges. Never buffer gameplay while offline.
     if (STATE.id && !STATE.ended && socket.connected && !document.hidden) {
         const edge = STATE.inputs.throwStart || STATE.inputs.throwRelease || STATE.inputs.dash || STATE.inputs.ability;
         if (edge || now - lastInputSent >= 1000/30) {
-            (edge ? socket : socket.volatile).emit('input', { ...STATE.inputs });
+            const packet = { ...STATE.inputs, seq: STATE.inputSeq++ };
+            (edge ? socket : socket.volatile).emit('input', packet);
             lastInputSent = now;
             STATE.inputs.throwStart = STATE.inputs.throwRelease = STATE.inputs.dash = STATE.inputs.ability = false;
         }
     }
-    Object.values(STATE.players).forEach(p => p.animate(dt, now));
     if (!document.getElementById('start-screen').classList.contains('hidden')) drawRecruitPreview(now);
 
     // --- CAMERA ---
@@ -1220,7 +1288,7 @@ function keyboardMovement() {
 function resetControls() {
     Object.assign(STATE.inputs, {moveX:0,moveY:0,dash:false,gather:false,throwStart:false,throwRelease:false,ability:false});
     // A cancellation also clears any server-side charge immediately.
-    if (STATE.id && socket.connected) socket.emit('input', { ...STATE.inputs, cancelCharge:true });
+    if (STATE.id && socket.connected) socket.emit('input', { ...STATE.inputs, seq: STATE.inputSeq++, cancelCharge:true });
     if (typeof keys !== 'undefined') keys.clear();
     aimPointer=null;
 }
@@ -1328,6 +1396,8 @@ function updateFieldHud() {
 }
 socket.on('disconnect', () => {
     resetControls(); STATE.id=null;
+    STATE.inputHistory = [];
+    STATE.predictionAccumulator = 0;
     document.getElementById('network-status').textContent='Disconnected · reconnecting…';
     document.getElementById('connection-status').textContent='Connection lost. Reconnecting…';
     document.getElementById('start-screen').classList.remove('hidden');
@@ -1340,10 +1410,15 @@ socket.on('connect_error', () => {
 });
 setInterval(() => {
     if(!socket.connected || document.hidden) return;
+    STATE.measureNextSnapshot = true;
     const start=performance.now();
+    const snapshotHz = Math.round(STATE.snapshotCount / 3);
+    STATE.snapshotCount = 0;
     socket.timeout(2000).emit('latency', err => {
         const ms=Math.round(performance.now()-start);
-        document.getElementById('network-status').textContent=err?'Connection slow':`${ms} ms RTT · ${ms>150?'high latency':ms>80?'fair':'good'} · 30 snapshots/s`;
+        const quality = ms>150?'high latency':ms>80?'fair':'good';
+        const size = STATE.lastSnapshotBytes ? ` · ~${(STATE.lastSnapshotBytes/1024).toFixed(1)} KB` : '';
+        document.getElementById('network-status').textContent=err?'Connection slow':`${ms} ms RTT · ${quality} · ${snapshotHz} Hz${size}`;
     });
 }, 3000);
 

@@ -5,6 +5,7 @@ const { CLASSES, classId, shotPattern, canBuild } = require('./classes');
 const {makeNeighborhood,PARENT} = require('./neighborhood');
 const {MISSIONS,AGGRESSION,aggressionId,missionProgress}=require('./missions');
 const app = express();
+const { publicPlayer, publicSnowball } = require('./snapshot');
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
 app.get('/health', (_req, res) => res.json({ ok: true, simulationHz: 60, snapshotHz: 30 }));
@@ -101,7 +102,6 @@ function difficultyOf(match) {
 const matches = new Map(); // id -> match
 let matchCounter = 0;
 let botCounter = 0;
-
 
 function createMatch(mode, blueCap, redCap, difficulty, roomCode) {
     const id = `match-${Date.now().toString(36)}-${++matchCounter}`;
@@ -214,6 +214,7 @@ class ServerPlayer {
         this.freezeTicks = 0;
         this.stats = { throws: 0, freezes: 0, dashes: 0, rescues: 0 };
         this.lastInputAt = Date.now();
+        this.lastInputSeq = 0;
         this.hasBall = true;
         this.chargeLevel = 0;
         this.gatherProgress = 0;
@@ -492,9 +493,11 @@ function matchStateInfo(match) {
 }
 
 function broadcastState(match) {
+    const players = {};
+    for (const id in match.players) players[id] = publicPlayer(match.players[id]);
     match.emitVolatile('state', {
-        players: match.players,
-        snowballs: match.snowballs,
+        players,
+        snowballs: match.snowballs.map(publicSnowball),
         structures: match.structures,
         tick: match.tick,
         serverTime: Date.now(),
@@ -835,7 +838,11 @@ io.on('connection', (socket) => {
         if (!p || match.ended) return;
         data = sanitizeInput(data);
         if (!data) return;
+        // Sequence zero keeps older clients compatible. Sequenced packets are
+        // idempotent: a delayed duplicate must not overwrite newer controls.
+        if (data.seq > 0 && data.seq <= p.lastInputSeq) return;
         p.lastInputAt = Date.now();
+        if (data.seq > 0) p.lastInputSeq = data.seq;
 
         p.inputs.moveX = data.moveX;
         p.inputs.moveY = data.moveY;
