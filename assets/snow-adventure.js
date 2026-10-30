@@ -2,7 +2,7 @@
  * Original Canvas art, no backend dependency, no effect on authoritative PvP.
  */
 (()=>{'use strict';
- let root,canvas,c,run=false,frame=0,last=0,keys=new Set(),touch={left:false,right:false,jump:false,throw:false},jumpQueued=0;
+ let root,canvas,c,run=false,frame=0,last=0,accumulator=0,keys=new Set(),touch={left:false,right:false,jump:false,throw:false},jumpQueued=0;
  const W=960,H=540,GROUND=420,STAGE=3100;let p,items,snowman,baddies,shots,camera,timer,started,won,failed;
  function make(){
   root=document.createElement('div');root.id='snow-adventure';root.hidden=true;root.style.cssText='display:none;position:fixed;inset:0;z-index:99;background:#cdeaf7;display:grid;place-items:center;overflow:hidden';
@@ -21,7 +21,7 @@
   window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
   window.addEventListener('blur',()=>{keys.clear();for(const k in touch)touch[k]=false});
  }
- function reset(){p={x:80,y:GROUND-50,w:33,h:50,vx:0,vy:0,grounded:false,coyote:0,checkpoint:80,balls:2};items=[{x:540,y:270},{x:1430,y:260},{x:2480,y:315}];snowman={x:2910,hp:3};baddies=[{x:2680,v:0.9},{x:2810,v:-0.6},{x:3020,v:-0.8}];shots=[];camera=0;timer=120;started=performance.now();won=false;failed=false;frame=0;last=performance.now()}
+ function reset(){p={x:80,y:GROUND-50,w:33,h:50,vx:0,vy:0,grounded:false,coyote:0,checkpoint:80,balls:2};items=[{x:540,y:270},{x:1430,y:260},{x:2480,y:315}];snowman={x:2910,hp:3};baddies=[{x:2680,v:0.9},{x:2810,v:-0.6},{x:3020,v:-0.8}];shots=[];camera=0;timer=120;started=performance.now();won=false;failed=false;frame=0;last=performance.now();accumulator=0}
  function platform(x){if(x>=720&&x<960)return 390;if(x>=1180&&x<1330)return 360;if(x>=1900&&x<2140)return 330;return GROUND}
  function simulate(dt){
   if(won||failed)return;
@@ -73,9 +73,11 @@
   root.querySelector('#adv-hud').textContent='🛷 SAVE MR. FROSTY · ACCESSORIES '+(3-items.length)+'/3 · '+timer+'s · SNOWMAN '+snowman.hp+'/3';
   if(won||failed){rounded(180,160,600,180,'#153e55e8',24);c.textAlign='center';c.fillStyle='#fff';c.font='900 34px system-ui';c.fillText(won?'❄ MR. FROSTY IS SAVED!':'☃ SNOW DAY DO-OVER!',480,238);c.font='bold 18px system-ui';c.fillText('Press ENTER to try again · EXIT to return to the modes',480,275);c.textAlign='left'}
  }
- function loop(now){if(!run)return;const dt=Math.min(50,now-last);last=now;frame++;if(dt>0)simulate(dt);draw();requestAnimationFrame(loop)}
+ function loop(now){if(!run)return;const dt=Math.min(50,Math.max(0,now-last));last=now;accumulator+=dt;
+  let steps=0;while(accumulator>=1000/60&&steps<4){frame++;simulate(1000/60);accumulator-=1000/60;steps++}
+  draw();requestAnimationFrame(loop)}
  function start(){if(!root)make();reset();root.hidden=false;root.style.display='grid';run=true;requestAnimationFrame(loop)}
  function stop(){run=false;if(root){root.hidden=true;root.style.display='none'}keys.clear()}
  window.addEventListener('keydown',e=>{if(run&&(won||failed)&&e.key==='Enter')reset()});
- window.SnowAdventure={start,stop};
+ window.SnowAdventure={start,stop,inspect:()=>p?{x:p.x,y:p.y,grounded:p.grounded,itemsRemaining:items.length,won,failed,active:run}:null};
 })();
