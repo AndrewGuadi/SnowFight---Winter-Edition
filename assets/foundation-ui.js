@@ -118,7 +118,7 @@
         selectRoom(code.value);
         if(!MENU.room)randomRoom();
         code.value=MENU.room;
-        const link=location.origin+location.pathname+'?room='+encodeURIComponent(MENU.room);
+        const link=location.origin+location.pathname+'?room='+encodeURIComponent(MENU.room)+(MENU.gameMode==='pow'?'&gameMode=pow':'');
         if(navigator.clipboard && navigator.clipboard.writeText){
             navigator.clipboard.writeText(link).catch(()=>fallbackCopy(link));
         }else fallbackCopy(link);

@@ -6,6 +6,7 @@ const {makeNeighborhood,PARENT} = require('./neighborhood');
 const {MISSIONS,AGGRESSION,aggressionId,missionProgress}=require('./missions');
 const {sanitizeAppearance}=require('./cosmetics');
 const {steerBot,hillSlot}=require('./bot-steering');
+const POW=require('./pow');
 const app = express();
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
@@ -105,11 +106,12 @@ let matchCounter = 0;
 let botCounter = 0;
 
 
-function createMatch(mode, blueCap, redCap, difficulty, roomCode) {
+function createMatch(mode, blueCap, redCap, difficulty, roomCode, gameMode='brawl') {
     const id = `match-${Date.now().toString(36)}-${++matchCounter}`;
     const match = {
         id,
         mode,
+        gameMode,
         blueCap,
         redCap,
         difficulty: difficulty || 'normal',
@@ -146,6 +148,7 @@ function createMatch(mode, blueCap, redCap, difficulty, roomCode) {
         emit(event, data) { io.to(id).emit(event, data); },
         emitVolatile(event, data) { io.to(id).volatile.emit(event, data); }
     };
+    if(gameMode==='pow')POW.init(match);
     matches.set(id, match);
     return match;
 }
@@ -159,10 +162,11 @@ function hasHumans(match) {
 }
 
 // Earliest-created multi match with the same caps and an open slot.
-function findMultiMatch(blueCap, redCap) {
+function findMultiMatch(blueCap, redCap, gameMode='brawl') {
     for (const match of matches.values()) {
         if (match.mode !== 'multi') continue;
         if (match.ended) continue;
+        if (match.gameMode !== gameMode) continue;
         if (match.roomCode) continue; // private rooms are found by code, not by chance
         if (match.blueCap !== blueCap || match.redCap !== redCap) continue;
         if (countTeam(match, 'blue') < blueCap || countTeam(match, 'red') < redCap) return match;
@@ -276,7 +280,8 @@ class ServerPlayer {
                     this.vx *= 0.8;
                     this.vy *= 0.8;
                 }
-                this.gatherProgress++;
+                const frenzy=match.gameMode==='pow' && match.pow?.buffs?.[this.team]?.kind==='snowballFrenzy';
+                this.gatherProgress+=frenzy?4/3:1;
                 if (this.gatherProgress >= CLASSES[this.classId].gather) {
                     this.hasBall = true;
                     this.gatherProgress = 0;
@@ -293,7 +298,8 @@ class ServerPlayer {
 
             // Cap Speed (bots scale by difficulty; humans use CONFIG.maxSpeed).
             const speed = Math.hypot(this.vx, this.vy);
-            const cap = CONFIG.maxSpeed * CLASSES[this.classId].speed * (this.isBot ? difficultyOf(match).speedMul : 1);
+            const boots=match.gameMode==='pow' && match.pow?.buffs?.[this.team]?.kind==='snowBoots';
+            const cap = CONFIG.maxSpeed * CLASSES[this.classId].speed * (this.isBot ? difficultyOf(match).speedMul : 1) * (boots?1.12:1);
             if (speed > cap) {
                 this.vx = (this.vx / speed) * cap;
                 this.vy = (this.vy / speed) * cap;
@@ -487,7 +493,7 @@ function computeBotInput(bot, match) {
 function matchStateInfo(match) {
     return {
         timeLeft: match.timerStarted
-            ? Math.max(0, Math.ceil((MATCH_DURATION_TICKS - match.timerTicks) / 60))
+            ? Math.max(0, Math.ceil(((match.gameMode==='pow'?POW.DURATION:MATCH_DURATION_TICKS) - match.timerTicks) / 60))
             : null,
         score: match.score,
         hill: match.hill,
@@ -496,6 +502,8 @@ function matchStateInfo(match) {
         ended: match.ended,
         winner: match.winner,
         mission: missionProgress(match),
+        gameMode:match.gameMode,
+        pow:match.gameMode==='pow'?POW.publicState(match):null,
         aggression: match.aggression
     };
 }
@@ -543,11 +551,12 @@ function tickMatch(match) {
     }
 
     // Match clock: starts once at least 2 players are present.
-    if (!match.timerStarted && Object.keys(match.players).length >= 2) {
+    if (!match.timerStarted && Object.keys(match.players).length >= 2 && (match.gameMode!=='pow' || (Object.values(match.players).some(p=>p.team==='blue') && Object.values(match.players).some(p=>p.team==='red')))) {
         match.timerStarted = true;
     }
     if (match.timerStarted) {
-        if (!match.overtime) {
+        if(match.gameMode==='pow') {match.timerTicks++;}
+        else if (!match.overtime) {
             match.timerTicks++;
             if (match.timerTicks >= MATCH_DURATION_TICKS) {
                 if(match.mission) {endMatch(match);broadcastState(match);return;}
@@ -576,7 +585,7 @@ function tickMatch(match) {
 
     // Center-hill scoring (regulation only): the team with strictly more
     // alive, unfrozen players inside the hill banks a point per second.
-    if (match.timerStarted && !match.overtime) {
+    if (match.gameMode!=='pow' && match.timerStarted && !match.overtime) {
         let blueIn = 0, redIn = 0;
         for (const id in match.players) {
             const p = match.players[id];
@@ -616,14 +625,16 @@ function tickMatch(match) {
         const p = match.players[id];
         if (p.chargeLevel > 0 && p.chargeLevel < 60) p.chargeLevel++;
         p.update(match);
+        if(match.gameMode==='pow')POW.clampPrison(p);
     }
+    if(match.gameMode==='pow')POW.tick(match);
 
     // 2b. Teammate rescue: an unfrozen player touching a frozen teammate
     // thaws them at once (no waiting out the 5s freeze). This is the
     // teamplay hook: staying near a frozen teammate, or running to them,
     // brings them straight back into the fight. Score is untouched —
     // the freeze already counted when it landed.
-    for (const id in match.players) {
+    if(match.gameMode!=='pow')for (const id in match.players) {
         const r = match.players[id];
         if (r.isFrozen) continue;
         for (const oid in match.players) {
@@ -659,7 +670,7 @@ function tickMatch(match) {
         // Check Collisions
         for (const id in match.players) {
             const p = match.players[id];
-            if (ball.ownerId === p.id || ball.team === p.team || p.isFrozen || match.ended) continue;
+            if (ball.ownerId === p.id || ball.team === p.team || p.isFrozen || p.captured || p.invulnerableUntil>match.tick || match.ended) continue;
 
             const owner = match.players[ball.ownerId];
             const bonus = (match.mode === 'single' && owner && !owner.isBot) ? SINGLE_HIT_BONUS : 0;
@@ -677,11 +688,14 @@ function tickMatch(match) {
             ball.active = false;
             if (impact.player) {
                 const p = impact.player;
+                const shield=match.gameMode==='pow' && match.pow?.buffs?.[p.team]?.kind==='fortShield';
+                if(shield){match.pow.buffs[p.team]=null;match.emit('effect',{type:'guard_hit',x:p.x,y:p.y,id:p.id});return;}
                 if (p.guardTicks>0) {
                     p.guardTicks=0;
                     match.emit('effect',{type:'guard_hit',x:p.x,y:p.y,id:p.id});
                     return;
                 }
+                if(match.gameMode==='pow'){POW.onHit(match,p,ball);return;}
                 p.isFrozen = true;
                 p.freezeTicks = 300;
                 p.chargeLevel = 0;
@@ -754,6 +768,9 @@ io.on('connection', (socket) => {
         // Bot difficulty: single-player only; anything else defaults to
         // normal (multiplayer has no bots, so it is ignored there).
         let difficulty = difficultyValid(data && data.difficulty);
+        const gameMode=data?.gameMode || 'brawl';
+        if(!['brawl','pow'].includes(gameMode)){socket.emit('joinError',{message:'Unknown game mode.'});return;}
+        if(gameMode==='pow' && mode!=='multi'){socket.emit('joinError',{message:'SnowFort requires multiplayer.'});return;}
         const missionId = mode==='single' && data && data.mission;
         if(missionId && !Object.hasOwn(MISSIONS,missionId)){socket.emit('joinError',{message:'Unknown mission.'});return;}
         const spec=missionId?MISSIONS[missionId]:null;
@@ -785,20 +802,21 @@ io.on('connection', (socket) => {
             // A full room rejects late joiners rather than silently
             // splitting them into a second match under the same code.
             match = findRoomMatch(room);
+            if(match && match.gameMode!==gameMode){socket.emit('joinError',{message:'This room is playing another game mode.'});return;}
             if (match && !roomHasOpenSlot(match)) {
                 socket.emit('joinError', { message: 'Room is full — try another code.' });
                 return;
             }
             if (!match) {
-                match = createMatch('multi', blue, red, undefined, room);
+                match = createMatch('multi', blue, red, undefined, room,gameMode);
             }
         } else {
             // Multiplayer: humans only, never bots. Join the earliest
             // OPEN match with the same caps and an open slot; otherwise
             // create one. Private rooms are never joined by chance.
-            match = findMultiMatch(blue, red);
+            match = findMultiMatch(blue, red,gameMode);
             if (!match) {
-                match = createMatch('multi', blue, red);
+                match = createMatch('multi', blue, red,undefined,null,gameMode);
             }
         }
         if (mode === 'multi') {
@@ -813,10 +831,11 @@ io.on('connection', (socket) => {
                 // Both teams full (should not happen: open matches are
                 // only picked with a slot, rooms reject when full):
                 // start a fresh open match rather than overfilling.
-                match = createMatch('multi', blue, red);
+                match = createMatch('multi', blue, red,undefined,null,gameMode);
                 team = 'blue';
             }
             match.players[socket.id] = new ServerPlayer(socket.id, team, false, recruit);
+            if(match.gameMode==='pow')POW.onJoin(match,match.players[socket.id]);
         }
 
         // New UX requests simplified classic controls; old clients keep manual packing.
@@ -841,7 +860,7 @@ io.on('connection', (socket) => {
             team: match.players[socket.id].team,
             classId: recruit,
             classes: CLASSES,
-            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty, mission: missionProgress(match), aggression: match.aggression, roomCode: match.roomCode || null }
+            match: { mode: match.mode, blueCap: match.blueCap, redCap: match.redCap, difficulty: match.difficulty, mission: missionProgress(match), gameMode:match.gameMode, aggression: match.aggression, roomCode: match.roomCode || null }
         });
     });
 
@@ -860,6 +879,7 @@ io.on('connection', (socket) => {
         p.inputs.dash = p.inputs.dash || data.dash;
         p.inputs.gather = data.gather;
         p.inputs.angle = data.angle;
+        if(match.gameMode==='pow'){p.interact=data.interact===true;if(p.captured){p.inputs.dash=false;p.inputs.gather=false;p.chargeLevel=0;return;}}
 
         if (data.cancelCharge) p.chargeLevel = 0;
 
@@ -874,6 +894,7 @@ io.on('connection', (socket) => {
 
         // Release Throw
         if (data.throwRelease && p.hasBall && !p.isFrozen) {
+            if(match.gameMode==='pow')p.invulnerableUntil=0; // offense ends rescue protection
             fireSnowball(p,match);
         }
     });

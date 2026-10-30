@@ -11,6 +11,7 @@
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/ui.css">
     <link rel="stylesheet" href="assets/foundation.css">
+    <link rel="stylesheet" href="assets/modes.css">
     <script src="assets/socket.io.min.js"></script>
     <script src="assets/recruits.js"></script>
     <script src="assets/neighborhood.js"></script>
@@ -459,6 +460,7 @@ class VisualPlayer {
         this.jacketColor = serverData.jacketColor || this.jacketColor;
         this.hatColor = serverData.hatColor || this.hatColor;
         this.autoReload = serverData.autoReload === true;
+        this.captured = serverData.captured===true;
         this.guardTicks = serverData.guardTicks || 0;
         this.targetX = serverData.x;
         this.targetY = serverData.y;
@@ -523,6 +525,10 @@ class VisualPlayer {
         ctx.scale(gatherScale, gatherScale);
         drawSnowRecruit(ctx, this, performance.now());
         ctx.restore();
+        if(this.captured){
+          ctx.save();ctx.textAlign='center';ctx.font='900 13px system-ui';ctx.fillStyle='#143b58';
+          ctx.fillText('🔒 POW',drawX,drawY-62);ctx.restore();
+        }
         if (this.id === STATE.id) {
             ctx.fillStyle = '#ffcf70';
             ctx.strokeStyle = '#7a5520';
@@ -597,6 +603,7 @@ socket.on('init', (data) => {
     STATE.structures = [];
     document.getElementById('btn-ability').hidden = STATE.classId === 'classic';
     STATE.activeMission=data.match?.mission || null;
+    MENU.gameMode=data.match?.gameMode||'brawl';
     STATE.mode=data.match?.mode;
     STATE.parentReactUntil=0;
     STATE.id = data.id;
@@ -685,6 +692,19 @@ socket.on('state', (serverData) => {
 
 socket.on('abilityDenied', data => { const el=document.getElementById('ability-clock');el.textContent=data.reason;STATE.abilityNoticeUntil=performance.now()+1500; });
 socket.on('effect', (data) => {
+    if(data.type==='pow_capture'){
+      createParticles(data.x,data.y,'#d8f5ff',27,'player');
+      addPopup(data.x,data.y-45,'SNOWED IN!','#ffd377');
+    }
+    if(data.type==='pow_release'){
+      createParticles(data.x,data.y,'#b8ffcb',34,'release');
+      addPopup(data.x,data.y-48,'JAIL BREAK!','#51bb79');
+      Audio.sfx.collect();
+    }
+    if(data.type==='pow_buff'){
+      createParticles(data.x,data.y,'#ffe38c',24,'flake');
+      addPopup(data.x,data.y-65,'POWER UP!','#efb83b');
+    }
     if(data.type==='parent_react') {STATE.parentReactUntil=performance.now()+1800;createParticles(data.x,data.y,'#fff',12);}
     if (['throw','cannon'].includes(data.type) && STATE.players[data.id]) {
         const player=STATE.players[data.id];
@@ -736,7 +756,7 @@ socket.on('hit', (data) => {
     }
     if (data.id === STATE.id) {
         CONFIG.screenShake = reducedMotion || STATE.lowEffects ? 0 : 6;
-        addPopup(data.x, data.y, "FROZEN!", "#00FFFF");
+        addPopup(data.x, data.y, MENU.gameMode==='pow'?'YOU WERE TAGGED!':'FROZEN!', "#00FFFF");
     }
 });
 
@@ -799,7 +819,7 @@ socket.on('matchEnd', () => { resetControls(); });
  * Preselect Single Player + 1v1 so Play works immediately.
  * 30v30 is single-player only: hidden from multiplayer selection.
  */
-const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'classic', room: '', mission: 'beacon', aggression:'balanced' };
+const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'classic', room: '', mission: 'beacon', aggression:'balanced', gameMode:(new URLSearchParams(location.search).get('gameMode')==='pow'?'pow':'brawl') };
 
 // Shareable room link: ?room=CODE. Same normalization as the server.
 const URL_ROOM = (() => {
@@ -931,7 +951,7 @@ function joinGame() {
     btn.disabled = true;
     btn.innerText = 'JOINING...';
     document.getElementById('menu-error').classList.add('hidden');
-    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, mission: MENU.mode==='single'?MENU.mission:null, aggression:MENU.aggression, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '', streamlined: MENU.classId==='classic', appearance: window.SNOW_GUEST ? SNOW_GUEST.get() : null });
+    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, mission: MENU.mode==='single'?MENU.mission:null, aggression:MENU.aggression, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '', streamlined: MENU.classId==='classic', gameMode: MENU.gameMode||'brawl', appearance: window.SNOW_GUEST ? SNOW_GUEST.get() : null });
 }
 
 let previousFrame = performance.now(), lastInputSent = 0;
@@ -1011,7 +1031,8 @@ function gameLoop(now = performance.now()) {
     // Center hill: the one objective, drawn on the field so the goal is
     // visible in play — dashed circle (radius 260, matching the server),
     // tinted by the holding team, labeled above the circle.
-    {
+    if(MENU.gameMode==='pow' && window.drawSnowFortWorld) window.drawSnowFortWorld(ctx,cx,cy,now);
+    else     {
         const hx = STATE.worldWidth / 2 - cx, hy = STATE.worldHeight / 2 - cy;
         const holder = STATE.hillHolder || null;
         ctx.save();
@@ -1251,7 +1272,7 @@ function keyboardMovement() {
         STATE.inputs.angle=Math.atan2(my,mx);
 }
 function resetControls() {
-    Object.assign(STATE.inputs, {moveX:0,moveY:0,dash:false,gather:false,throwStart:false,throwRelease:false,ability:false});
+    Object.assign(STATE.inputs, {moveX:0,moveY:0,dash:false,gather:false,interact:false,throwStart:false,throwRelease:false,ability:false});
     // A cancellation also clears any server-side charge immediately.
     if (STATE.id && socket.connected) socket.emit('input', { ...STATE.inputs, cancelCharge:true });
     if (typeof keys !== 'undefined') keys.clear();
@@ -1405,6 +1426,8 @@ selectRecruit(MENU.classId);
 gameLoop();
 </script>
 <script src="assets/foundation-ui.js"></script>
+<script src="assets/snow-adventure.js"></script>
+<script src="assets/modes-ui.js"></script>
 </body>
 </html>
 
