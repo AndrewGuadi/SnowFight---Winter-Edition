@@ -68,7 +68,7 @@ const assert = require('node:assert/strict');
             x: STATE.players[STATE.id].x,
             serverX: window.__authoritative.x
         }));
-        await a.keyboard.down('d');
+        await a.keyboard.down('ArrowRight');
         await a.waitForTimeout(150);
         const during = await a.evaluate(() => ({
             x: STATE.players[STATE.id].x,
@@ -79,8 +79,15 @@ const assert = require('node:assert/strict');
         // important boundary is that the server has not moved us yet.
         assert.equal(during.serverX, before.serverX);
         downstreamDelay = 0;
-        await a.keyboard.up('d');
-        await a.waitForFunction(() => STATE.inputHistory.length === 0, {}, { timeout: 8000 });
+        await a.keyboard.up('ArrowRight');
+        // A live 60 Hz predictor normally has a few pending ticks between
+        // 30 Hz acknowledgements; require the delayed backlog to drain and
+        // stay bounded rather than expecting an instantaneous empty array.
+        await a.waitForFunction(() => {
+            const p = STATE.players[STATE.id], s = window.__authoritative;
+            return STATE.inputHistory.length <= 10 && s.ack >= STATE.inputSeq - 5 &&
+                Math.hypot(p.vx, p.vy) < 0.05 && Math.hypot(s.vx, s.vy) < 0.05;
+        }, {}, { timeout: 8000 });
         const reconciled = await a.evaluate(() => ({
             x: STATE.players[STATE.id].x,
             y: STATE.players[STATE.id].y,
