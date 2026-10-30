@@ -2,7 +2,7 @@
 (() => {
  'use strict';
  const front=document.getElementById('front-door');if(!front)return;
- MENU.gameMode='brawl';
+ if(!['pow','brawl'].includes(MENU.gameMode))MENU.gameMode='brawl';
  const chooser=document.createElement('section');chooser.id='arcade-mode-picker';chooser.className='arcade-mode-picker';
  chooser.innerHTML='<h2>CHOOSE YOUR SNOW DAY</h2><div class="arcade-mode-grid">'+
   '<button class="arcade-mode selected" data-mode="brawl"><b>❄ NEIGHBORHOOD BRAWL</b><span>Live snowball battles, friends & teams</span></button>'+
