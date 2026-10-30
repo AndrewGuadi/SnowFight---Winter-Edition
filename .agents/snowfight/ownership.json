@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "baseBranch": "docs/rebuild-reuse-first-2026-10-30",
+  "integrationBranch": "chore/ruflo-swarm-coordination",
+  "releaseApproval": "andrew",
+  "agents": [
+    {
+      "id": "kimi",
+      "role": "visual-engineering",
+      "write": [
+        "assets/recruits.js",
+        "assets/animation/**",
+        "assets/vfx/**",
+        "docs/animation/**"
+      ],
+      "reviewer": "muse"
+    },
+    {
+      "id": "sol",
+      "role": "backend-network-ai",
+      "write": [
+        "backend/bot-steering.js",
+        "backend/cosmetics.js",
+        "backend/tests/ai-*.test.cjs",
+        "docs/network/**"
+      ],
+      "reviewer": "gpt6"
+    },
+    {
+      "id": "muse",
+      "role": "ux-qa",
+      "write": [
+        "assets/foundation.css",
+        "assets/foundation-ui.js",
+        "backend/tests/foundation-browser.cjs",
+        "docs/ux/**"
+      ],
+      "reviewer": "gpt6"
+    },
+    {
+      "id": "gpt6",
+      "role": "integration-review",
+      "write": [
+        ".agents/snowfight/**",
+        "scripts/swarm/**",
+        "docs/rebuild/**"
+      ],
+      "reviewer": "andrew"
+    }
+  ],
+  "constraints": {
+    "noDirectMain": true,
+    "noProductionDeploy": true,
+    "noSecretAccess": true,
+    "oneWriterPerWorktree": true,
+    "requireOwnerMergeApproval": true,
+    "fullstackRewriteBranchForbidden": true
+  }
+}
