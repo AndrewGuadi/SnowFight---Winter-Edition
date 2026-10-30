@@ -5,7 +5,7 @@
  let root,canvas,c,run=false,frame=0,last=0,keys=new Set(),touch={left:false,right:false,jump:false,throw:false},jumpQueued=0;
  const W=960,H=540,GROUND=420,STAGE=3100;let p,items,snowman,baddies,shots,camera,timer,started,won,failed;
  function make(){
-  root=document.createElement('div');root.id='snow-adventure';root.hidden=true;root.style.cssText='position:fixed;inset:0;z-index:99;background:#cdeaf7;display:grid;place-items:center;overflow:hidden';
+  root=document.createElement('div');root.id='snow-adventure';root.hidden=true;root.style.cssText='display:none;position:fixed;inset:0;z-index:99;background:#cdeaf7;display:grid;place-items:center;overflow:hidden';
   root.innerHTML='<div style="position:absolute;top:8px;left:12px;z-index:2;font:900 16px system-ui;color:#174e6c" id="adv-hud"></div>'+
    '<button id="adv-close" style="position:absolute;right:12px;top:12px;z-index:5;background:#153e55;color:white;border:0;border-radius:12px;padding:10px 15px;font-weight:bold">EXIT</button>'+
    '<canvas id="adv-canvas" width="960" height="540" style="width:100%;height:100%;object-fit:contain;touch-action:none"></canvas>'+
@@ -74,8 +74,8 @@
   if(won||failed){rounded(180,160,600,180,'#153e55e8',24);c.textAlign='center';c.fillStyle='#fff';c.font='900 34px system-ui';c.fillText(won?'❄ MR. FROSTY IS SAVED!':'☃ SNOW DAY DO-OVER!',480,238);c.font='bold 18px system-ui';c.fillText('Press ENTER to try again · EXIT to return to the modes',480,275);c.textAlign='left'}
  }
  function loop(now){if(!run)return;const dt=Math.min(50,now-last);last=now;frame++;if(dt>0)simulate(dt);draw();requestAnimationFrame(loop)}
- function start(){if(!root)make();reset();root.hidden=false;run=true;requestAnimationFrame(loop)}
- function stop(){run=false;if(root)root.hidden=true;keys.clear()}
+ function start(){if(!root)make();reset();root.hidden=false;root.style.display='grid';run=true;requestAnimationFrame(loop)}
+ function stop(){run=false;if(root){root.hidden=true;root.style.display='none'}keys.clear()}
  window.addEventListener('keydown',e=>{if(run&&(won||failed)&&e.key==='Enter')reset()});
  window.SnowAdventure={start,stop};
 })();
