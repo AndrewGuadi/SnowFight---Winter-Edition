@@ -130,18 +130,6 @@
                  Class, mode, size and difficulty live behind Custom. -->
             <div id="front-door" class="mb-4">
                 <p class="text-slate-500 font-bold tracking-widest text-xs uppercase mb-1">90-SECOND BRAWL · HOLD THE CENTER HILL</p>
-                <p class="field-hint">Hold the hill — keep the Snowguard's signal beacon lit.</p>
-                <p id="campaign-panel" class="field-hint"></p>
-                <div id="solo-missions" style="text-align:left;background:#e1eff3;padding:12px;border-radius:14px;margin:12px 0">
-                    <label for="solo-choice" style="font-size:11px;font-weight:900">SINGLE PLAYER · CHOOSE YOUR MISSION</label>
-                    <select id="solo-choice" onchange="selectSoloMission(this.value)" style="width:100%;padding:10px;border-radius:8px;margin-top:6px;background:white">
-                        <option value="beacon">1 · Light the beacon — Easy / Relaxed</option>
-                        <option value="snowfight">2 · Win the snow fight — Easy / Balanced</option>
-                        <option value="squad">3 · Take the neighborhood — Normal / Balanced</option>
-                        <option value="">Free play — choose your own rules</option>
-                    </select>
-                    <p id="solo-brief" style="font-size:12px;line-height:1.5;margin-top:8px"></p>
-                </div>
                 <p class="field-hint" style="margin:0 0 10px">Most hill points at the buzzer wins. No setup — just play.</p>
                 <button id="btn-play-quick" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-2xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
                     ▶ PLAY
@@ -205,14 +193,6 @@
                 <button id="diff-normal" onclick="selectDifficulty('normal')" class="menu-btn menu-active flex-1 py-2 rounded-xl font-black text-sm">Normal</button>
                 <button id="diff-hard" onclick="selectDifficulty('hard')" class="menu-btn flex-1 py-2 rounded-xl font-black text-sm">Hard</button>
             </div>
-            <div id="aggression-row" style="margin:12px 0;text-align:left">
-                <label for="bot-aggression" style="font-size:11px;font-weight:900">BOT AGGRESSION · FREE PLAY</label>
-                <select id="bot-aggression" onchange="MENU.aggression=this.value" style="width:100%;padding:10px;border-radius:8px;background:white">
-                    <option value="chill">Relaxed — slower pursuit, long firing breaks</option>
-                    <option value="balanced" selected>Balanced — regular pressure</option>
-                    <option value="relentless">Relentless — constant pressure</option>
-                </select>
-            </div>
             <p class="field-intro">Cold hands. Quick feet. One more round.</p>
             <label class="mission-label" for="mission-select">YOUR FIELD ASSIGNMENT</label>
             <select id="mission-select" onchange="selectMission(this.value)">
@@ -221,7 +201,7 @@
                 <option value="ace">Snow ace · land 10 freezes</option>
             </select>
             <p id="career-line" class="field-hint"></p>
-            <details class="controls-help"><summary>How to play · touch & keyboard</summary><p class="field-hint">Touch: left thumb moves, drag THROW to aim, release to fire.<br>Arrows: arrow keys move + aim, hold Space to throw, Shift dash, E special, G pack.<br>WASD + mouse: WASD moves, mouse aims, hold click/F to throw, Space dash, E special, G pack.<br>Pick your scheme above — it saves on this device. Mobile stays touch-first.<br>Goal: hold the center hill to keep the Snowguard's signal beacon lit — most hill points at the buzzer wins.</p></details>
+            <details class="controls-help"><summary>How to play · touch & keyboard</summary><p class="field-hint">Touch: left thumb moves, drag THROW to aim, release to fire.<br>Arrows: arrow keys move + aim, hold Space to throw, Shift dash, E special, G pack.<br>WASD + mouse: WASD moves, mouse aims, hold click/F to throw, Space dash, E special, G pack.<br>Pick your scheme above — it saves on this device. Mobile stays touch-first.</p></details>
             <p id="menu-error" class="hidden text-red-500 font-bold text-sm mb-3"></p>
 
             <button id="btn-play" onclick="joinGame()" disabled class="w-full bg-slate-300 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-all transform scale-95 opacity-50 cursor-not-allowed">
@@ -238,7 +218,6 @@
             <h2 id="results-title" class="text-5xl font-black mb-2 text-slate-700">DRAW</h2>
             <p id="results-score" class="text-slate-500 font-bold mb-2 tracking-widest text-sm">Blue 0 – 0 Red</p>
             <p id="results-hill" class="text-slate-500 font-bold mb-6 tracking-widest text-sm"></p>
-            <button id="next-solo" onclick="nextSoloMission()" hidden style="background:#16667c;color:white;padding:12px;border-radius:12px;margin-bottom:12px;width:100%">NEXT MISSION</button>
             <p id="results-personal" class="field-hint"></p>
             <div class="flex gap-2">
                 <button onclick="rematch()" class="flex-1 py-3 rounded-xl font-black bg-blue-600 text-white">REMATCH</button>
@@ -648,7 +627,7 @@ socket.on('connect', () => {
         quick.disabled = false;
         quick.classList.remove('bg-slate-300', 'opacity-50', 'cursor-not-allowed');
         quick.classList.add('bg-blue-600', 'hover:bg-blue-500', 'cursor-pointer', 'transform', 'hover:scale-105');
-        quick.innerText = MENU.mode==='single' && MENU.mission ? "START MISSION" : "▶ PLAY";
+        quick.innerText = "▶ PLAY";
     }
     // Room link join: ?room=CODE drops straight into that friends' match.
     if (URL_ROOM && !URL_ROOM_JOINED && !STATE.id) {
@@ -670,8 +649,6 @@ socket.on('init', (data) => {
     STATE.classId = data.classId || 'classic';
     STATE.structures = [];
     document.getElementById('btn-ability').hidden = STATE.classId === 'classic';
-    STATE.activeMission=data.match?.mission || null;
-    STATE.mode=data.match?.mode;
     STATE.parentReactUntil=0;
     STATE.id = data.id;
     STATE.team = data.team;
@@ -723,7 +700,6 @@ socket.on('state', (serverData) => {
         if (!serverData.players[id]) delete STATE.players[id];
     }
     STATE.structures = serverData.structures || [];
-    STATE.activeMission=serverData.match?.mission || null;
     STATE.serverTick=serverData.tick;
     STATE.snowballs = serverData.snowballs;
     STATE.snapshotAt = performance.now();
@@ -834,26 +810,6 @@ function showResults(data) {
     career.rounds++; career.best = Math.max(career.best, stats.freezes);
     if (completed) career.medals++;
     try { localStorage.setItem('snowbrawl-career-v1', JSON.stringify(career)); } catch {}
-    const active=STATE.activeMission;
-    const next=document.getElementById('next-solo');next.hidden=true;
-    if(active){
-        title.textContent=data.winner===STATE.team?'MISSION WON!':'MISSION FAILED';
-        document.getElementById('results-personal').textContent=`${active.name}: ${active.metric==='win'?(data.winner===STATE.team?'Round won':'Win the round to complete this mission'):`${active.progress}/${active.target} ${active.metric}`} · ${stats.freezes} freezes · ${stats.throws} throws`;
-        if(data.winner===STATE.team){missionWins[active.id]=true;try{localStorage.setItem('snowbrawl-mission-wins-v1',JSON.stringify(missionWins));}catch{};next.hidden=active.id==='squad';}
-    }
-    // Campaign-lite progress from this match's results (client data only).
-    try {
-      if(STATE.mode!=='single') throw new Error('Solo progression only');
-      const pc=Object.keys(STATE.players||{}).length;
-      const myHill=(data.hill&&data.hill[STATE.team])||0;
-      campaign.hill=(campaign.hill||0)+myHill;
-      if(data.winner===STATE.team&&pc===2) campaign.win1v1=true;
-      if((stats.rescues||0)>=1) campaign.rescue=true;
-      if(data.winner===STATE.team&&pc===10) campaign.win5v5=true;
-      if(data.winner===STATE.team&&STATE.classId&&!campaign.classes.includes(STATE.classId)) campaign.classes.push(STATE.classId);
-      localStorage.setItem('snowbrawl-campaign-v1', JSON.stringify(campaign));
-      renderCampaign();
-    } catch {}
     document.getElementById('results-overlay').classList.remove('hidden');
 }
 // Use the following final snapshot for exact personal stats, not the earlier event.
@@ -864,7 +820,7 @@ socket.on('matchEnd', () => { resetControls(); });
  * Preselect Single Player + 1v1 so Play works immediately.
  * 30v30 is single-player only: hidden from multiplayer selection.
  */
-const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'glacier', room: '', mission: 'beacon', aggression:'balanced' };
+const MENU = { mode: 'single', blue: 1, red: 1, difficulty: 'normal', classId: 'glacier', room: '' };
 
 // Shareable room link: ?room=CODE. Same normalization as the server.
 const URL_ROOM = (() => {
@@ -945,9 +901,6 @@ function selectMode(mode) {
     document.getElementById('mode-multi').classList.toggle('menu-active', mode === 'multi');
     // Bot difficulty is single-player only: hide the row in multiplayer.
     document.getElementById('difficulty-row').style.display = (mode === 'single') ? 'flex' : 'none';
-    document.getElementById('solo-missions').hidden=mode!=='single';
-    document.getElementById('aggression-row').hidden=mode!=='single';
-    updateMissionControls();
     // Private rooms are multiplayer only: hide the row in single-player.
     document.getElementById('room-row').style.display = (mode === 'multi') ? 'block' : 'none';
     // 30v30 is single-player only: disable it in multiplayer, and if it
@@ -955,7 +908,6 @@ function selectMode(mode) {
     const btn30 = document.getElementById('size-30v30');
     btn30.disabled = (mode !== 'single');
     if (mode !== 'single' && MENU.blue === 30) selectSize(1, 1);
-    if(mode==='single') selectSoloMission(MENU.mission);else updateMissionControls();
 }
 
 function selectSize(blue, red) {
@@ -995,7 +947,7 @@ function joinGame() {
     btn.disabled = true;
     btn.innerText = 'JOINING...';
     document.getElementById('menu-error').classList.add('hidden');
-    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, mission: MENU.mode==='single'?MENU.mission:null, aggression:MENU.aggression, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '' });
+    socket.emit('join', { mode: MENU.mode, blue: MENU.blue, red: MENU.red, difficulty: MENU.difficulty, classId: MENU.classId, room: MENU.mode === 'multi' ? MENU.room : '' });
 }
 
 let previousFrame = performance.now(), lastInputSent = 0;
@@ -1353,38 +1305,12 @@ const MISSIONS = { scout:{label:'SCOUT',target:3}, striker:{label:'STRIKER',targ
 let mission='scout', career={rounds:0,medals:0,best:0};
 try { const saved=JSON.parse(localStorage.getItem('snowbrawl-career-v1')); if(saved) for(const key of Object.keys(career)) if(Number.isFinite(saved[key]) && saved[key]>=0) career[key]=saved[key]; } catch {}
 document.getElementById('career-line').textContent=`${career.rounds} rounds · ${career.medals} assignments completed · Best ${career.best} freezes (this device)`;
-// Campaign-lite: a 5-mission ladder on this device (localStorage, no server
-// change, no currency). Progress is derived from stored state each render.
-let campaign={hill:0,win1v1:false,rescue:false,win5v5:false,classes:[]};
-try { const sc=JSON.parse(localStorage.getItem('snowbrawl-campaign-v1')); if(sc) { if(Number.isFinite(sc.hill)&&sc.hill>=0) campaign.hill=sc.hill; if(sc.win1v1) campaign.win1v1=true; if(sc.rescue) campaign.rescue=true; if(sc.win5v5) campaign.win5v5=true; if(Array.isArray(sc.classes)) campaign.classes=sc.classes.filter(c=>typeof c==='string'); } } catch {}
-function campaignMissions() {
-  return [
-    {label:'Win a 1v1 match', done:!!campaign.win1v1, progress:campaign.win1v1?'1/1':'0/1'},
-    {label:'Bank 10 hill points', done:campaign.hill>=10, progress:Math.min(campaign.hill,10)+'/10'},
-    {label:'Rescue a frozen teammate', done:!!campaign.rescue, progress:campaign.rescue?'1/1':'0/1'},
-    {label:'Win a 5v5 match', done:!!campaign.win5v5, progress:campaign.win5v5?'1/1':'0/1'},
-    {label:'Win a match with every class', done:campaign.classes.length>=4, progress:Math.min(campaign.classes.length,4)+'/4'},
-  ];
-}
-function renderCampaign() {
-  const el=document.getElementById('campaign-panel'); if(!el) return;
-  const ms=campaignMissions(); const cur=ms.find(m=>!m.done);
-  el.textContent = cur ? `CAMPAIGN · Mission ${ms.indexOf(cur)+1}/5: ${cur.label} — ${cur.progress}` : 'CAMPAIGN COMPLETE — all 5 missions done on this device.';
-}
-renderCampaign();
-const SOLO_BRIEFS={beacon:'WIN: Bank 5 hill points in 90 seconds. Enter the center circle; each uncontested second earns a point. Easy, relaxed opponent.',snowfight:'WIN: Land 3 freezes in 90 seconds. Hold PACK for a fresh snowball; hold THROW to charge and release to fire. Easy, balanced opponent.',squad:'WIN: Lead your 5v5 team at the buzzer. Hill points decide; freezes break a tie. A draw means retry.'};
-let missionWins={};try{const v=JSON.parse(localStorage.getItem('snowbrawl-mission-wins-v1'));for(const id of Object.keys(SOLO_BRIEFS))if(v?.[id]===true)missionWins[id]=true;}catch{}
-function updateMissionControls(){const locked=MENU.mode==='single' && !!MENU.mission;document.getElementById('campaign-panel').hidden=locked;document.getElementById('mission-select').hidden=locked;document.querySelector('label[for=mission-select]').hidden=locked;document.querySelectorAll('#difficulty-row button,[id^=size-]').forEach(b=>b.disabled=locked || (b.id==='size-30v30'&&MENU.mode!=='single'));document.getElementById('bot-aggression').disabled=locked;}
-function selectSoloMission(id){MENU.mission=Object.hasOwn(SOLO_BRIEFS,id)?id:'';document.getElementById('solo-choice').value=MENU.mission;document.getElementById('solo-brief').textContent=MENU.mission?SOLO_BRIEFS[id]+(missionWins[id]?' ✓ Won on this device.':''):'Free play: most hill points at the buzzer wins. Use Custom to set difficulty and aggression.';document.getElementById('btn-play-quick').textContent=MENU.mission?'START MISSION':'PLAY FREE MATCH';if(MENU.mission){const cfg={beacon:[1,1,'easy'],snowfight:[1,1,'easy'],squad:[5,5,'normal']}[MENU.mission];selectSize(cfg[0],cfg[1]);selectDifficulty(cfg[2]);document.getElementById('bot-aggression').value=MENU.mission==='beacon'?'chill':'balanced';}updateMissionControls();}
-function nextSoloMission(){const ids=Object.keys(SOLO_BRIEFS),i=ids.indexOf(STATE.activeMission?.id);if(i>=0&&i<ids.length-1){selectSoloMission(ids[i+1]);joinGame();}}
-selectSoloMission(MENU.mission);
 function selectMission(value) { if(MISSIONS[value]) mission=value; }
 function toggleSound() { Audio.muted=!Audio.muted; const b=document.getElementById('sound-toggle'); b.textContent=Audio.muted?'SOUND OFF':'SOUND ON'; b.setAttribute('aria-pressed',String(Audio.muted)); }
 function updateFieldHud() {
     const p=STATE.players[STATE.id]; if(!p) return;
     const m=MISSIONS[mission], hits=p.stats?.freezes || 0;
     document.getElementById('assignment').textContent=`${m.label} / ${Math.min(hits,m.target)} OF ${m.target}${hits>=m.target?' · COMPLETE':''}`;
-    if(STATE.activeMission){const m=STATE.activeMission;document.getElementById('assignment').textContent=m.metric==='win'?`${m.name.toUpperCase()} · WIN THIS ROUND`:`${m.name.toUpperCase()} · ${Math.min(m.progress,m.target)}/${m.target} ${m.metric.toUpperCase()}`;}
     document.getElementById('combat-status').textContent=p.isFrozen ? `FROZEN · thaw in ${Math.ceil(p.freezeTicks/60)}s` : !p.hasBall ? (p.gatherProgress ? `PACKING ${Math.round(p.gatherProgress/(STATE.classConfig[p.classId]?.gather || 45)*100)}%` : 'NO SNOWBALL · HOLD PACK') : p.chargeLevel>0 ? `POWER ${Math.round(p.chargeLevel/60*100)}% · RELEASE TO THROW` : 'SNOWBALL READY';
     document.getElementById('charge-indicator').style.strokeDashoffset=289*(1-p.chargeLevel/60);
     btnDash.style.opacity=p.dashCooldownTimer>0?'0.45':'1';
