@@ -1,0 +1,20 @@
+{
+  "name": "SnowFight — Winter Edition",
+  "short_name": "SnowFight",
+  "description": "A playful neighborhood snowball fight with friends.",
+  "start_url": "../",
+  "scope": "../",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#dbeef3",
+  "theme_color": "#153e55",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
