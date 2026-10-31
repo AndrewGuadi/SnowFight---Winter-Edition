@@ -1,0 +1,16 @@
+/* One short, accessible combat callout; visual excitement without extra controls. */
+.snow-intensity-toast{
+  position:fixed;top:calc(66px + env(safe-area-inset-top));left:50%;
+  transform:translateX(-50%);z-index:64;max-width:min(92vw,670px);
+  pointer-events:none;text-align:center;color:#fff;background:#214e69ed;
+  border:2px solid #c9edfa;box-shadow:0 8px 22px #19374966;
+  border-radius:18px;padding:11px 18px;font:900 clamp(13px,2.1vw,21px) system-ui;
+  letter-spacing:.3px;line-height:1.18;text-wrap:balance;
+}
+.snow-intensity-toast[data-kind=urgent]{background:#7a3349f5;border-color:#ffd779;}
+.snow-intensity-toast[data-kind=warm]{background:#825a2ef5;border-color:#ffdb98;}
+.snow-intensity-toast[hidden]{display:none!important;}
+.snow-intensity-toast.show{animation:snow-intensity-in .23s cubic-bezier(.2,1.5,.4,1) both;}
+@keyframes snow-intensity-in{from{opacity:0;transform:translate(-50%,-12px) scale(.93)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+@media(max-width:550px){.snow-intensity-toast{top:calc(50px + env(safe-area-inset-top));padding:8px 12px;max-width:78vw;font-size:12px}}
+@media(prefers-reduced-motion:reduce){.snow-intensity-toast.show{animation:none}}
