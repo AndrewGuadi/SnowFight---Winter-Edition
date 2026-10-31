@@ -81,6 +81,16 @@ function tick(match){
     const released=[...list];list.length=0;
     released.forEach((id,i)=>{const p=match.players[id];if(!p)return;p.captured=false;p.x=EXIT[team].x+(i%3)*38;p.y=EXIT[team].y+Math.floor(i/3)*38;p.invulnerableUntil=match.tick+PROTECT;p.vx=p.vy=0});
     data.rescues[team]++;match.score[team]+=2;data.gate[team]=match.tick+GATE;
+    // A successful prison break blows away enemy shots approaching the exit.
+    // This is a small, server-owned defense against unavoidable gate camping;
+    // it does not damage enemies or change the score beyond the existing rescue.
+    let cleared=0;
+    for(const ball of match.snowballs){
+     if(!ball.active||ball.team===team)continue;
+     if(Math.hypot(ball.x-EXIT[team].x,ball.y-EXIT[team].y)>215)continue;
+     ball.active=false;cleared++;
+    }
+    match.emit('effect',{type:'pow_breakout_wave',team,x:EXIT[team].x,y:EXIT[team].y,cleared});
     match.emit('effect',{type:'pow_release',team,x:EXIT[team].x,y:EXIT[team].y,ids:released});
     data.rescue[team]=0;data.rescuer[team]=null;
    }
