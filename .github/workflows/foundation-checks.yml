@@ -37,3 +37,4 @@ jobs:
       - run: node backend/tests/mission-browser.cjs
       - run: node backend/tests/recruits-browser.cjs
       - run: node backend/tests/modes-browser.cjs
+      - run: node backend/tests/contest-intensity-browser.cjs
