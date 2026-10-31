@@ -63,6 +63,13 @@
         chime(false);
       }else announce('⚠ ENEMY FORT GATE IS OPENING!','urgent','enemy-gate-'+e.team);
    }
+   if(e.type==='pow_breakout_wave'){
+      createParticles(e.x,e.y,'#d9f7ff',26,'release');
+      if(e.team===STATE.team){
+        announce('🌨 BREAKOUT SNOW WAVE!','urgent','wave-'+e.team);
+        addPopup(e.x,e.y-40,'SHOTS BLOCKED: '+e.cleared,'#b2ecff');
+      }
+   }
    if(e.type==='pow_release'&&e.team===STATE.team){
       announce('🎉 TEAM BREAKOUT!','urgent','breakout-'+e.team);
    }
