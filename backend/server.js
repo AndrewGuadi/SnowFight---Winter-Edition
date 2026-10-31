@@ -7,6 +7,7 @@ const {MISSIONS,AGGRESSION,aggressionId,missionProgress}=require('./missions');
 const {sanitizeAppearance}=require('./cosmetics');
 const {steerBot,hillSlot}=require('./bot-steering');
 const POW=require('./pow');
+const {resolveSnowballClashes,signalCloseCalls}=require('./combat-interactions');
 const app = express();
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
@@ -651,7 +652,9 @@ function tickMatch(match) {
         }
     }
 
-    // 3. Update Snowballs
+    // 3. Snowballs can collide with incoming enemy shots before hitting players.
+    // This uses the same swept-circle timeline as player/cover collisions.
+    resolveSnowballClashes(match);
     match.snowballs.forEach(ball => {
         const fromX = ball.x, fromY = ball.y;
         // A sudden-death freeze ends the match mid-tick: later balls in
@@ -717,6 +720,9 @@ function tickMatch(match) {
                 match.emit('effect', { type: 'obs_hit', x: fromX + (ball.x-fromX)*first, y: fromY + (ball.y-fromY)*first });
             }
         }
+        // Only true misses that have safely passed a player count as close calls.
+        // No speed/damage bonuses are granted; this is anticipation feedback.
+        if (!impact && ball.active) signalCloseCalls(match,ball,fromX,fromY);
     });
 
     match.structures = match.structures.filter(o=>o.hp>0);
