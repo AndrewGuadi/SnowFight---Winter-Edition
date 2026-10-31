@@ -68,9 +68,21 @@ test('POW gate-rush announcement occurs only at one second remaining',()=>{
  for(const p of [a,b,c])POW.onJoin(m,p);
  m.timerStarted=true;POW.onHit(m,a,{ownerId:'c',team:'red'});
  b.x=380;b.y=280;b.interact=true;
+ // Near enemy volleys are intercepted by the rescue wave; friendly shots and
+ // distant enemy fire are preserved.
+ const nearEnemy={x:500,y:390,active:true,team:'red'};
+ const nearFriendly={x:500,y:390,active:true,team:'blue'};
+ const farEnemy={x:1500,y:1500,active:true,team:'red'};
+ m.snowballs.push(nearEnemy,nearFriendly,farEnemy);
  for(let i=0;i<120;i++){m.tick++;POW.tick(m)}
  assert.equal(events.filter(e=>e.data.type==='pow_gate_rush').length,1);
  assert.equal(events.filter(e=>e.data.type==='pow_release').length,1);
  assert.equal(a.captured,false);
+ assert.equal(nearEnemy.active,false,'breakout wave clears nearby enemy fire');
+ assert.equal(nearFriendly.active,true,'breakout wave keeps friendly shots');
+ assert.equal(farEnemy.active,true,'distant projectiles remain');
+ const waves=events.filter(e=>e.data.type==='pow_breakout_wave');
+ assert.equal(waves.length,1);
+ assert.equal(waves[0].data.cleared,1);
  matches.clear();
 });
