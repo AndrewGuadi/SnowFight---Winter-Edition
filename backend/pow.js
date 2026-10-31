@@ -39,6 +39,13 @@ function onHit(match,p,ball){
  const owner=match.players[ball.ownerId];if(owner)owner.stats.freezes++;
  match.emit('effect',{type:'pow_capture',id:p.id,x,y,team:p.team});
  match.emit('hit',{id:p.id,ownerId:ball.ownerId,x,y});
+ // One free teammate left is an actionable, high-stakes rescue opportunity.
+ // Announce it once, on the capture that creates it; never award extra points.
+ const members=Object.values(match.players).filter(v=>v.team===p.team&&!v.isBot);
+ const free=members.filter(v=>!v.captured);
+ if(members.length>1&&free.length===1){
+  match.emit('effect',{type:'pow_last_stand',team:p.team,id:free[0].id,x:free[0].x,y:free[0].y});
+ }
  checkWin(match);return true;
 }
 function checkWin(match){
@@ -66,10 +73,24 @@ function tick(match){
   if(list.length && data.gate[team]<=match.tick && eligible.length){
    const rescuer=eligible.sort((a,b)=>a.id.localeCompare(b.id))[0];
    if(data.rescuer[team]!==rescuer.id){data.rescuer[team]=rescuer.id;data.rescue[team]=0}
-   if(++data.rescue[team]>=RESCUE){
+   const progress=++data.rescue[team];
+   if(progress===RESCUE-60){
+    match.emit('effect',{type:'pow_gate_rush',team,id:rescuer.id,x:PAD[team].x,y:PAD[team].y});
+   }
+   if(progress>=RESCUE){
     const released=[...list];list.length=0;
     released.forEach((id,i)=>{const p=match.players[id];if(!p)return;p.captured=false;p.x=EXIT[team].x+(i%3)*38;p.y=EXIT[team].y+Math.floor(i/3)*38;p.invulnerableUntil=match.tick+PROTECT;p.vx=p.vy=0});
     data.rescues[team]++;match.score[team]+=2;data.gate[team]=match.tick+GATE;
+    // A successful prison break blows away enemy shots approaching the exit.
+    // This is a small, server-owned defense against unavoidable gate camping;
+    // it does not damage enemies or change the score beyond the existing rescue.
+    let cleared=0;
+    for(const ball of match.snowballs){
+     if(!ball.active||ball.team===team)continue;
+     if(Math.hypot(ball.x-EXIT[team].x,ball.y-EXIT[team].y)>215)continue;
+     ball.active=false;cleared++;
+    }
+    match.emit('effect',{type:'pow_breakout_wave',team,x:EXIT[team].x,y:EXIT[team].y,cleared});
     match.emit('effect',{type:'pow_release',team,x:EXIT[team].x,y:EXIT[team].y,ids:released});
     data.rescue[team]=0;data.rescuer[team]=null;
    }
